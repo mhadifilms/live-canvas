@@ -335,6 +335,95 @@ class CanvasTests(unittest.TestCase):
             server.server_close()
             worker.join()
 
+    def test_branded_routes_are_stable_collision_safe_and_task_scoped(self):
+        canvas.update_content(self.root, self.thread, {"title": "Quiz review"})
+        other = "another-thread"
+        canvas.mutate(self.root, other, lambda s: s.update(enabled=True))
+        canvas.update_content(self.root, other, {"title": "Quiz review"})
+        route = canvas.task_route(self.root, canvas.key(self.thread))
+        other_route = canvas.task_route(self.root, canvas.key(other))
+        self.assertEqual(route, "/quiz-review")
+        self.assertTrue(other_route.startswith("/quiz-review-"))
+        self.assertNotEqual(route, other_route)
+        # Even deliberately occupied discriminator names cannot replace a route.
+        third = "third-thread"
+        canvas.mutate(self.root, third, lambda s: s.update(enabled=True))
+        canvas.update_content(self.root, third, {"title": "Quiz review"})
+        routes = canvas.read_json(self.root / "routes.json")
+        for suffix in (canvas.key(third)[:8], canvas.key(third)):
+            routes["quiz-review-" + suffix] = "reserved-task"
+        canvas.atomic_json(self.root / "routes.json", routes)
+        third_route = canvas.task_route(self.root, canvas.key(third))
+        self.assertTrue(third_route.endswith("-2"))
+        self.assertEqual(canvas.read_json(self.root / "routes.json")["quiz-review-" + canvas.key(third)], "reserved-task")
+        canvas.update_content(self.root, self.thread, {"title": "A different title"})
+        self.assertEqual(canvas.task_route(self.root, canvas.key(self.thread)), route)
+        info = {"port": 60839, "token": "secret"}
+        self.assertEqual(canvas.viewer_url(info, self.thread, self.root, hostname="canvas.localhost"),
+                         "http://canvas.localhost:60839/quiz-review#auth=" + canvas.task_capability("secret", canvas.key(self.thread)))
+        self.assertNotEqual(canvas.task_capability("secret", canvas.key(self.thread)), canvas.task_capability("secret", canvas.key(other)))
+        with self.assertRaises(ValueError):
+            canvas.viewer_url(info, self.thread, self.root, hostname="evil.localhost")
+
+    def test_clean_routes_authenticate_only_their_task_and_keep_legacy_links(self):
+        route = canvas.task_route(self.root, canvas.key(self.thread))
+        other = "other-session"
+        canvas.mutate(self.root, other, lambda s: s.update(enabled=True))
+        other_route = canvas.task_route(self.root, canvas.key(other))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), canvas.make_handler(self.root, "secret", "instance"))
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        host = "canvas.localhost:" + str(server.server_port)
+        credential = canvas.task_capability("secret", canvas.key(self.thread))
+        def request(path, method="GET", headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+            connection.request(method, path, headers={"Host": host, **(headers or {})})
+            response = connection.getresponse()
+            result = response.status, dict(response.getheaders()), response.read()
+            connection.close()
+            return result
+        auth = {"Origin": "http://" + host, "Authorization": "Bearer " + credential}
+        try:
+            shell = request(route)
+            self.assertEqual(shell[0], 200)
+            self.assertNotIn(self.thread.encode(), shell[2])
+            self.assertEqual(request(route + "/state")[0], 403)
+            self.assertEqual(request(route + "/_auth", "POST", {"Authorization": auth["Authorization"]})[0], 403)
+            self.assertEqual(request(route + "/_auth", "POST", {**auth, "Origin": "http://evil.localhost"})[0], 403)
+            self.assertEqual(request(route + "/_auth", "POST", {**auth, "Sec-Fetch-Site": "cross-site"})[0], 403)
+            self.assertEqual(request(other_route + "/_auth", "POST", auth)[0], 403)
+            response = request(route + "/_auth", "POST", auth)
+            self.assertEqual(response[0], 204)
+            cookie_header = response[1]["Set-Cookie"]
+            self.assertIn("HttpOnly", cookie_header)
+            self.assertIn("SameSite=Strict", cookie_header)
+            self.assertIn("Path=" + route + ";", cookie_header)
+            self.assertNotIn("Domain=", cookie_header)
+            cookie = cookie_header.split(";", 1)[0]
+            authenticated = {"Cookie": cookie}
+            state = request(route + "/state", headers=authenticated)
+            self.assertEqual(state[0], 200)
+            self.assertEqual(json.loads(state[2])["thread"], self.thread)
+            self.assertEqual(request(route + "/state", headers={**authenticated, "If-None-Match": state[1]["ETag"]})[0], 304)
+            self.assertEqual(request(other_route + "/state", headers=authenticated)[0], 403)
+            self.assertEqual(request(route + "/state", headers={"Cookie": cookie + "; " + cookie})[0], 403)
+            self.assertEqual(request(route + "/state", headers={"Host": "evil.localhost:" + str(server.server_port), **authenticated})[0], 403)
+            self.assertEqual(request(route + "/state", headers={"Origin": "http://localhost:" + str(server.server_port), **authenticated})[0], 403)
+            for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
+                self.assertEqual(request(route + "/state", method, authenticated)[0], 405)
+            self.assertEqual(request(route + "/_auth", "PUT", auth)[0], 405)
+            self.assertEqual(request(route + "/state?file=server.json", headers=authenticated)[0], 404)
+            for alias in canvas.VIEWER_HOSTS:
+                self.assertEqual(request(route, headers={"Host": alias + ":" + str(server.server_port)})[0], 200)
+            legacy = request("/v/secret/" + canvas.key(self.thread) + "/")
+            self.assertEqual(legacy[0], 200)
+            self.assertEqual(legacy[1]["Set-Cookie"], cookie_header)
+            self.assertIn(('data-canvas-route="' + route + '"').encode(), legacy[2])
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
 
 if __name__ == "__main__":
     unittest.main()

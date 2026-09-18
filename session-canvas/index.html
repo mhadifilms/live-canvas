@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Live Canvas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23315ba7'/%3E%3Cpath d='M9 9h14v3H12v8h11v3H9z' fill='white'/%3E%3C/svg%3E">
 <style>
 /* Tokens */
 :root{color-scheme:light;--bg:#fafafa;--surface:#f0f0f0;--raised:#fff;--text:#202020;--muted:#636363;--line:#ddd;--accent:#315ba7;--accent-wash:#e9effb;--good:#347452;--warn:#936622;--shadow:0 8px 30px #00000012;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px}
@@ -329,8 +330,12 @@ function applyTheme(value) { if (value === 'auto') delete document.documentEleme
 applyTheme($('theme-select').value); $('theme-select').onchange = () => { applyTheme($('theme-select').value); storageSet('session-canvas-theme', $('theme-select').value); };
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('settings').open) { $('settings').open = false; $('settings').querySelector('summary').focus(); } });
 document.addEventListener('click', event => { if ($('settings').open && !$('settings').contains(event.target)) $('settings').open = false; });
+// The fragment is never sent in HTTP requests or retained in the address bar.
+const canvasRoute = document.documentElement.dataset.canvasRoute || '';
+let bootstrapCredential = canvasRoute ? new URLSearchParams(location.hash.slice(1)).get('auth') : null;
+if (canvasRoute) history.replaceState(null, '', canvasRoute);
 async function poll() {
-  try { const response = await fetch('state', { headers: etag ? { 'If-None-Match': etag } : {}, cache: 'no-store' }); if (response.status !== 304) { if (!response.ok) throw Error(response.status); const next = await response.json(), previous = state; try { render(next); } catch (error) { state = previous; workSignature = outcomeSignature = activitySignature = historySignature = ''; lastVisual = null; if (previous) { try { render(previous); } catch {} } throw error; } etag = response.headers.get('ETag'); } failures = 0; $('connection').dataset.live = 'true'; $('connection-text').textContent = 'Connected'; refreshTimes(); }
+  try { if (bootstrapCredential) { const auth = await fetch(canvasRoute + '/_auth', { method: 'POST', headers: { Authorization: 'Bearer ' + bootstrapCredential }, credentials: 'same-origin', cache: 'no-store' }); if (!auth.ok) throw Error(auth.status); bootstrapCredential = null; } const response = await fetch(canvasRoute ? canvasRoute + '/state' : 'state', { headers: etag ? { 'If-None-Match': etag } : {}, cache: 'no-store' }); if (response.status !== 304) { if (!response.ok) throw Error(response.status); const next = await response.json(), previous = state; try { render(next); } catch (error) { state = previous; workSignature = outcomeSignature = activitySignature = historySignature = ''; lastVisual = null; if (previous) { try { render(previous); } catch {} } throw error; } etag = response.headers.get('ETag'); } failures = 0; $('connection').dataset.live = 'true'; $('connection-text').textContent = 'Connected'; refreshTimes(); }
   catch { failures++; $('connection').dataset.live = 'false'; $('connection-text').textContent = state ? 'Reconnecting · saved view' : 'Connecting'; if (!state) $('loading').textContent = 'Canvas unavailable. Start the local server and open its current URL.'; }
   setTimeout(poll, document.hidden ? 5000 : Math.min(10000, 1000 * Math.max(1, failures)));
 }

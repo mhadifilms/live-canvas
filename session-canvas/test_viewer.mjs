@@ -25,7 +25,7 @@ class Element {
 function viewer(storage = new Map(), unavailable = false, options = {}) {
   const elements = new Map(), events = new Map();
   const document = {
-    documentElement: new Element('html'),
+    documentElement: Object.assign(new Element('html'), { dataset: options.route ? { canvasRoute: options.route } : {} }),
     getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
     createElement: tag => new Element(tag),
     createTextNode: text => new Element('#text', text),
@@ -38,7 +38,7 @@ function viewer(storage = new Map(), unavailable = false, options = {}) {
     setItem(key, value) { if (unavailable) throw Error('Unavailable'); storage.set(key, value); },
     removeItem(key) { if (unavailable) throw Error('Unavailable'); storage.delete(key); },
   };
-  const context = createContext({ document, localStorage, URL, TextEncoder, crypto: webcrypto, navigator: {},
+  const context = createContext({ document, localStorage, URL, URLSearchParams, location: { hash: options.hash || '' }, history: options.history || { replaceState() {} }, TextEncoder, crypto: webcrypto, navigator: {},
     setTimeout: () => 0, clearTimeout() {}, setInterval() {}, fetch: options.fetch || (() => new Promise(() => {})),
     window: { addEventListener(name, listener) { events.set(name, listener); } } });
   runInContext(script, context);
@@ -212,4 +212,47 @@ test('LC002: failed JSON or render keeps old ETag and retries the same revision'
   assert.equal(view.evaluate('etag'), '"next"');
   assert.equal(view.evaluate('state.name'), 'next');
   assert.deepEqual(calls.slice(1), ['"previous"', '"previous"', '"previous"']);
+});
+
+
+test('bootstrap removes visible credentials before authentication and polls the clean route', async () => {
+  const calls = [], replaced = [];
+  const app = viewer(new Map(), false, { route: '/quiz-review', hash: '#auth=task-secret',
+    history: { replaceState(...args) { replaced.push(args); } },
+    fetch: async (url, options) => {
+      calls.push({ url, options, cleaned: replaced.length === 1 });
+      if (url.endsWith('/_auth')) return { ok: true };
+      return { status: 304 };
+    },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(replaced[0][2], '/quiz-review');
+  assert.equal(calls[0].cleaned, true);
+  assert.equal(calls[0].url, '/quiz-review/_auth');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer task-secret');
+  assert.equal(calls[1].url, '/quiz-review/state');
+  assert.equal(app.evaluate('bootstrapCredential'), null);
+  assert.equal(app.storage.size, 0);
+  await app.evaluate('poll()');
+  assert.equal(calls.filter(call => call.url.endsWith('/_auth')).length, 1);
+});
+
+test('clean reload uses its task cookie without exposing a new credential', async () => {
+  const calls = [];
+  viewer(new Map(), false, { route: '/quiz-review', fetch: async url => { calls.push(url); return { status: 304 }; } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['/quiz-review/state']);
+});
+
+test('failed bootstrap keeps no credential in the URL and does not request task data', async () => {
+  const calls = [], replaced = [];
+  const app = viewer(new Map(), false, { route: '/quiz-review', hash: '#auth=incorrect',
+    history: { replaceState(...args) { replaced.push(args); } },
+    fetch: async url => { calls.push(url); return { ok: false, status: 403 }; },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(replaced[0][2], '/quiz-review');
+  assert.deepEqual(calls, ['/quiz-review/_auth']);
+  assert.equal(app.elements.get('connection').dataset.live, 'false');
 });

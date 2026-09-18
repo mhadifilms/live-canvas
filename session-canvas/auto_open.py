@@ -118,6 +118,15 @@ def launch(root, thread):
                      start_new_session=True, close_fds=True)
 
 
+def valid_viewer_url(url):
+    try:
+        parsed = canvas.urllib.parse.urlsplit(url)
+        return (parsed.scheme == "http" and parsed.hostname in canvas.VIEWER_HOSTS
+                and parsed.port is not None and not parsed.username and not parsed.password)
+    except ValueError:
+        return False
+
+
 def browser_command(url):
     if sys.platform == "darwin":
         return ["open", url]
@@ -138,7 +147,7 @@ def worker(root, thread):
         started = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--home", str(root),
                                   "--ensure-server", "--thread", thread], capture_output=True, timeout=10, check=True)
         url = json.loads(started.stdout)["url"]
-        if not isinstance(url, str) or not url.startswith("http://127.0.0.1:"):
+        if not isinstance(url, str) or not valid_viewer_url(url):
             raise ValueError("Expected the local canvas URL")
         command = browser_command(url)
         settle(root, thread, token, opened=True, opener=lambda: subprocess.run(
@@ -160,6 +169,7 @@ if __name__ == "__main__":
     options = parser.parse_args()
     if options.ensure_server:
         # Starting the shared server must never re-enable a stopped session.
-        print(json.dumps({"url": canvas.viewer_url(canvas.ensure_server(options.home), options.thread)}))
+        print(json.dumps({"url": canvas.viewer_url(canvas.ensure_server(options.home), options.thread, options.home,
+                                                   hostname=os.environ.get("LIVE_CANVAS_HOST", "localhost"))}))
     else:
         worker(options.home, options.thread)

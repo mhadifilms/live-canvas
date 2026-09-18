@@ -6,6 +6,7 @@ import datetime as dt
 import errno
 import fcntl
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = Path(__file__).resolve().parent
@@ -466,16 +468,53 @@ def ensure_server(root):
     raise RuntimeError("Server did not start; see " + str(root / "server.log"))
 
 
-def viewer_url(info, thread):
-    return "http://127.0.0.1:%s/v/%s/%s/" % (info["port"], info["token"], key(thread))
+VIEWER_HOSTS = {"canvas.localhost", "localhost", "127.0.0.1"}
+
+
+def task_route(root, task_key):
+    """Keep the first readable route stable through title changes and restarts."""
+    with locked(root / ".routes.lock"):
+        routes = read_json(root / "routes.json", {})
+        for slug, existing in routes.items():
+            if existing == task_key:
+                return "/" + slug
+        state = read_json(root / "tasks" / task_key / "state.json", {})
+        content = state.get("content", {})
+        label = (content.get("context") or {}).get("label") or content.get("title") or "canvas"
+        base = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:60].rstrip("-") or "canvas"
+        slug = base
+        if slug in routes:
+            slug = base + "-" + task_key[:8]
+        if slug in routes:
+            slug = base + "-" + task_key
+        discriminator = 2
+        while slug in routes:
+            slug = base + "-" + task_key + "-" + str(discriminator)
+            discriminator += 1
+        routes[slug] = task_key
+        atomic_json(root / "routes.json", routes)
+        return "/" + slug
+
+
+def task_capability(token, task_key):
+    return hmac.new(token.encode(), ("canvas-task:" + task_key).encode(), hashlib.sha256).hexdigest()
+
+
+def viewer_url(info, thread, root=None, hostname=None):
+    root = root if root is not None else home()
+    hostname = hostname or os.environ.get("LIVE_CANVAS_HOST", "canvas.localhost")
+    if hostname not in VIEWER_HOSTS:
+        raise ValueError("LIVE_CANVAS_HOST must be canvas.localhost, localhost, or 127.0.0.1")
+    route = task_route(root, key(thread))
+    return "http://%s:%s%s#auth=%s" % (hostname, info["port"], route, task_capability(info["token"], key(thread)))
 
 
 def make_handler(root, token, instance):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
-            pass  # Capability URLs and task identifiers never go to access logs.
+            pass  # Credentials and task identifiers never go to access logs.
 
-        def send_body(self, status, body=b"", mime="text/plain; charset=utf-8", etag=None):
+        def send_body(self, status, body=b"", mime="text/plain; charset=utf-8", etag=None, cookie=None):
             self.send_response(status)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(body)))
@@ -485,47 +524,110 @@ def make_handler(root, token, instance):
             self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
             if etag:
                 self.send_header("ETag", etag)
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(body)
 
-        def do_GET(self):
-            expected_host = "127.0.0.1:" + str(self.server.server_port)
-            if self.headers.get("Host") != expected_host:
-                return self.send_body(403)
-            origin = self.headers.get("Origin")
-            if origin and origin != "http://" + expected_host:
-                return self.send_body(403)
-            if self.headers.get("Sec-Fetch-Site") == "cross-site":
-                return self.send_body(403)
-            prefix = "/v/" + token + "/"
-            if not self.path.startswith(prefix):
-                return self.send_body(404)
-            route = self.path[len(prefix):]
-            if route == "health":
-                return self.send_body(200, json.dumps({"instance": instance}).encode(), "application/json")
-            parts = route.split("/")
-            if len(parts) != 2 or len(parts[0]) != 32 or any(c not in "0123456789abcdef" for c in parts[0]) or parts[1] not in {"", "state"}:
-                return self.send_body(404)
-            state = read_json(root / "tasks" / parts[0] / "state.json")
-            if not state:
-                return self.send_body(404)
-            if parts[1] == "":
-                return self.send_body(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+        def trusted_request(self, require_origin=False):
+            hosts = self.headers.get_all("Host", [])
+            if len(hosts) != 1 or hosts[0] not in {host + ":" + str(self.server.server_port) for host in VIEWER_HOSTS}:
+                return False
+            origins = self.headers.get_all("Origin", [])
+            if len(origins) > 1 or (origins and origins[0] != "http://" + hosts[0]):
+                return False
+            return (not require_origin or bool(origins)) and self.headers.get("Sec-Fetch-Site") != "cross-site"
+
+        def clean_route(self):
+            match = re.fullmatch(r"/([a-z0-9][a-z0-9-]*)(?:/(state|_auth))?", self.path)
+            if not match:
+                return None
+            task_key = read_json(root / "routes.json", {}).get(match[1])
+            if not task_key:
+                return None
+            return task_key, "/" + match[1], match[2]
+
+        def authorized(self, task_key):
+            values = []
+            for header in self.headers.get_all("Cookie", []):
+                for pair in header.split(";"):
+                    name, separator, value = pair.strip().partition("=")
+                    if separator and name == "canvas_auth":
+                        values.append(value)
+            return len(values) == 1 and hmac.compare_digest(values[0].encode(), task_capability(token, task_key).encode())
+
+        def cookie(self, task_key, route):
+            return "canvas_auth=%s; Path=%s; HttpOnly; SameSite=Strict; Max-Age=2592000" % (task_capability(token, task_key), route)
+
+        def shell(self, route, cookie=None):
+            body = (HERE / "index.html").read_text().replace('<html lang="en">', '<html lang="en" data-canvas-route="' + route + '">', 1)
+            return self.send_body(200, body.encode(), "text/html; charset=utf-8", cookie=cookie)
+
+        def send_state(self, state):
             etag = '"%s"' % state["revision"]
             if self.headers.get("If-None-Match") == etag:
                 return self.send_body(304, etag=etag)
             return self.send_body(200, json.dumps(state, ensure_ascii=False).encode(), "application/json; charset=utf-8", etag)
 
+        def do_GET(self):
+            if not self.trusted_request():
+                return self.send_body(403)
+            # Old capability links retain their origin and exchange for a task cookie.
+            prefix = "/v/" + token + "/"
+            if self.path.startswith(prefix):
+                legacy = self.path[len(prefix):]
+                if legacy == "health":
+                    return self.send_body(200, json.dumps({"instance": instance}).encode(), "application/json")
+                match = re.fullmatch(r"([a-f0-9]{32})/(state)?", legacy)
+                if not match:
+                    return self.send_body(404)
+                state = read_json(root / "tasks" / match[1] / "state.json")
+                if not state:
+                    return self.send_body(404)
+                if match[2]:
+                    return self.send_state(state)
+                route = task_route(root, match[1])
+                return self.shell(route, self.cookie(match[1], route))
+            resolved = self.clean_route()
+            if not resolved:
+                return self.send_body(404)
+            task_key, route, endpoint = resolved
+            if endpoint is None:
+                # Only the generic shell is public; no authored data or task title.
+                return self.shell(route)
+            if endpoint != "state":
+                return self.send_body(404)
+            if not self.authorized(task_key):
+                return self.send_body(403)
+            state = read_json(root / "tasks" / task_key / "state.json")
+            return self.send_state(state) if state else self.send_body(404)
+
         do_HEAD = do_GET
 
         def do_POST(self):
-            self.send_body(405, b"Read-only viewer")
+            resolved = self.clean_route()
+            if not resolved or resolved[2] != "_auth":
+                return self.send_body(405, b"Read-only viewer")
+            if not self.trusted_request(require_origin=True):
+                return self.send_body(403)
+            task_key, route, _ = resolved
+            credentials = self.headers.get_all("Authorization", [])
+            lengths = self.headers.get_all("Content-Length", [])
+            if self.headers.get("Transfer-Encoding") or len(lengths) > 1 or (lengths and lengths[0] != "0"):
+                return self.send_body(400)
+            expected = "Bearer " + task_capability(token, task_key)
+            if len(credentials) != 1 or not hmac.compare_digest(credentials[0].encode(), expected.encode()):
+                return self.send_body(403)
+            return self.send_body(204, cookie=self.cookie(task_key, route))
 
-        do_PUT = do_POST
-        do_PATCH = do_POST
-        do_DELETE = do_POST
-        do_OPTIONS = do_POST
+        def reject_write(self):
+            return self.send_body(405, b"Read-only viewer")
+
+        do_PUT = reject_write
+        do_PATCH = reject_write
+        do_DELETE = reject_write
+        do_OPTIONS = reject_write
     return Handler
 
 
@@ -758,7 +860,7 @@ def main():
                           "revision": state["revision"] if state else None,
                           "server_running": None if health_unavailable else bool(info),
                           "server_status": "health unavailable: local networking blocked" if health_unavailable else "running" if info else "stopped",
-                          "url": viewer_url(info, thread) if info and state else None,
+                          "url": viewer_url(info, thread, root) if info and state else None,
                           "state_file": str(task_dir(root, thread) / "state.json")}, indent=2))
         return 0
     except Exception as exc:

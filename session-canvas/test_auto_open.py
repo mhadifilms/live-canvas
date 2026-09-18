@@ -214,6 +214,14 @@ class AutoInstallTests(unittest.TestCase):
             self.assertEqual(json.loads(config_path.read_text())["hooks"]["Stop"][0], config["hooks"]["Stop"][0])
             self.assertTrue(list((root / ".claude/.live-canvas-backups").glob('.live-canvas-install.json.*')))
 
+    def test_browser_url_validation_accepts_only_explicit_loopback_aliases(self):
+        for host in ("canvas.localhost", "localhost", "127.0.0.1"):
+            self.assertTrue(auto_open.valid_viewer_url("http://" + host + ":60839/quiz-review#auth=task"))
+        for url in ("https://canvas.localhost:60839/quiz-review", "http://evil.localhost:60839/",
+                    "http://127.0.0.1:60839@evil.example/", "http://user@localhost:60839/",
+                    "http://localhost/", "http://localhost:invalid/"):
+            self.assertFalse(auto_open.valid_viewer_url(url))
+
 
 if __name__ == "__main__":
     unittest.main()
