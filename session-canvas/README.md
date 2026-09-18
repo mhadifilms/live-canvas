@@ -22,7 +22,7 @@ Start a new foreground chat after installation; restart the host if it caches ho
 - **Cursor:** the first user turn opens the built-in browser when exposed by the host, otherwise the OS browser.
 - **Claude Code:** a detached local worker starts the shared server and dispatches the OS browser at startup, without a model call. macOS uses `open`; Linux requires a graphical session and `xdg-open`.
 
-Only `source: startup` triggers Codex/Claude automatic opening. Cursor sessionStart accepts absent source as startup. Resume, clear, compact, and fork never trigger opening. Cursor's documented `is_background_agent`, plus explicit background/subagent/noninteractive indicators supplied by other hosts, suppress opening. Absence of those indicators is not proof that a host is interactive. A main custom `agent_type` is not treated as a subagent.
+`source: startup` and `source: resume` permit Codex/Claude automatic opening when no prior dispatch is acknowledged. Cursor sessionStart accepts absent source as startup. Clear, compact, and fork never trigger opening. Cursor's documented `is_background_agent`, plus explicit background/subagent/noninteractive indicators supplied by other hosts, suppress opening. Absence of those indicators is not proof that a host is interactive. A main custom `agent_type` is not treated as a subagent.
 
 Session identities are exact: Codex retains its raw task ID; Claude uses `claude:<session_id>`; Cursor uses `cursor:<conversation_id>` (sessionStart can fall back to `session_id`). No IDs are inferred from a working directory. SessionStart injects the command prefix, and Cursor also supplies environment values when the host supports them.
 
@@ -34,7 +34,11 @@ python3 canvas.py auto-open on
 python3 canvas.py auto-open status
 ```
 
+An explicit request to use/show the canvas must show its view even if its content is already active: run `start`, then `auto-open claim --manual`, dispatch the start URL only when the claim permits it, and acknowledge completed dispatch with `auto-open opened --claim <claim>`. Manual claims serialize with automatic claims and require an enabled session. A queued host result stays unacknowledged; release its claim and explain that the target task must be shown. Inspect the exact browser/tab when host tools allow it. The runtime reports `opening.visibility: unverified`: neither enabled state nor an acknowledgement proves current UI visibility.
+
 The off switch affects automatic opening; explicit manual `start` still works. `stop --thread <exact-key>` disables a session, and startup hooks do not re-enable it. Claims serialize automatic opening attempts across repeated hooks and concurrent turns. Native opening follows `auto-open claim`, `start --auto-claim <claim>`, browser tool success, then `auto-open opened --claim <claim>`. Failed attempts use `auto-open release --claim <claim>`; interrupted claims expire after five minutes. A crash between UI opening and acknowledgement can result in a repeated opening on retry. OS dispatch success is not proof that a browser rendered the page.
+
+Startup and resume can recover an opening that has no acknowledgement; they preserve explicit stops and automatic-opening opt-out. `status --summary` also reports opening state so an ordinary user turn can recover a missing hook or failed attempt.
 
 The hooks do not retry themselves or create follow-up model turns. A failed opening can be retried on a later startup or manually; errors release the claim when possible. The Claude worker bounds shared-server startup to ten seconds and OS dispatch to three seconds, outside the two-second hook process. Automatic observations still make zero model calls. Useful authored sections require concise updates at milestones and before the assistant's final reply.
 

@@ -53,7 +53,9 @@ def handle(root, client, event, payload):
                 opening = auto_open.native_instruction(root, thread, prefix, client)
         context = ("Live canvas is available via /live-canvas. Exact session command prefix: " + prefix +
                    ". " + opening + "Respect explicit stop and auto-open off; do not automatically reopen otherwise. "
-                   "For an active canvas, use status --summary, then update meaningful changed sections at milestones and before the final reply. "
+                   "Enabled/updated state is not proof of a visible browser. An explicit request to use/show the canvas requires opening it, even if already active: "
+                   "run start, auto-open claim --manual, open the returned start URL when should_open is true, and acknowledge only completed dispatch with auto-open opened --claim <claim>. "
+                   "For an active canvas, use status --summary to inspect content and opening status, then update meaningful changed sections at milestones and before the final reply. "
                    "Hooks record activity and final responses automatically; no polling or follow-up turns are needed.")
         canvas.hook(root, thread, {}, signal)
         if client in {"claude", "codex"}:

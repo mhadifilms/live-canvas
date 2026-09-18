@@ -33,7 +33,8 @@ class AutoOpenTests(unittest.TestCase):
     def test_foreground_start_only_and_defensive_background_opt_outs(self):
         for client in ("codex", "claude", "cursor"):
             self.assertTrue(auto_open.foreground_start(client, {"source": "startup", "agent_type": "custom-main"}))
-            for source in ("resume", "clear", "compact", "fork"):
+            self.assertTrue(auto_open.foreground_start(client, {"source": "resume"}))
+            for source in ("clear", "compact", "fork"):
                 self.assertFalse(auto_open.foreground_start(client, {"source": source}))
             for field in ("is_background_agent", "is_subagent", "noninteractive", "non_interactive"):
                 self.assertFalse(auto_open.foreground_start(client, {"source": "startup", field: True}))
@@ -54,6 +55,68 @@ class AutoOpenTests(unittest.TestCase):
         self.assertFalse(auto_open.claim(self.root, self.thread)["should_open"])
         self.assertTrue(auto_open.prepare(self.root, "different-session"))
         self.assertTrue(auto_open.claim(self.root, "different-session")["should_open"])
+
+    def test_claim_recovers_missing_startup_and_reports_dispatch_not_visibility(self):
+        self.assertEqual(auto_open.opening_status(None)["status"], "not_started")
+        claim = auto_open.claim(self.root, self.thread)
+        self.assertTrue(claim["should_open"])
+        self.assertTrue(self.state()["enabled"])
+        self.assertEqual(auto_open.opening_status(self.state())["status"], "pending")
+        # Queued/failed opens release their lease; enabled content is not an acknowledgement.
+        auto_open.settle(self.root, self.thread, claim["claim"])
+        canvas.update_content(self.root, self.thread, {"current": "Authored while hidden"})
+        result = canvas.status_summary_result(self.state(), self.thread, "state.json")
+        self.assertEqual(result["opening"], {"status": "unacknowledged", "visibility": "unverified"})
+        claim = auto_open.claim(self.root, self.thread)
+        auto_open.settle(self.root, self.thread, claim["claim"], opened=True)
+        self.assertEqual(auto_open.opening_status(self.state()), {"status": "dispatched", "visibility": "unverified"})
+        self.assertFalse(auto_open.claim(self.root, self.thread)["should_open"])
+
+    def test_manual_request_reopens_acknowledged_view_with_optout_but_not_stopped_state(self):
+        claim = auto_open.claim(self.root, self.thread)
+        auto_open.settle(self.root, self.thread, claim["claim"], opened=True)
+        auto_open.preference(self.root, False)
+        self.assertFalse(auto_open.claim(self.root, self.thread)["should_open"])
+        manual = auto_open.claim(self.root, self.thread, manual=True)
+        self.assertTrue(manual["should_open"])
+        self.assertFalse(auto_open.claim(self.root, self.thread, manual=True)["should_open"])
+        self.assertTrue(auto_open.settle(self.root, self.thread, manual["claim"], opened=True)["acknowledged"])
+        self.assertFalse(auto_open.enabled(self.root))  # Explicit opening does not change preference.
+        canvas.mutate(self.root, self.thread, lambda state: state.update(enabled=False))
+        self.assertFalse(auto_open.claim(self.root, self.thread, manual=True)["should_open"])
+        self.assertFalse(self.state()["enabled"])
+        canvas.mutate(self.root, self.thread, lambda state: state.update(enabled=True))  # Explicit start.
+        self.assertTrue(auto_open.claim(self.root, self.thread, manual=True)["should_open"])
+
+    def test_stop_rejects_inflight_manual_ack_and_manual_does_not_initialize_missing_state(self):
+        self.assertFalse(auto_open.claim(self.root, self.thread, manual=True)["should_open"])
+        self.assertIsNone(self.state())
+        auto_open.prepare(self.root, self.thread)
+        manual = auto_open.claim(self.root, self.thread, manual=True)
+        canvas.mutate(self.root, self.thread, lambda state: state.update(enabled=False))
+        self.assertFalse(auto_open.settle(self.root, self.thread, manual["claim"], opened=True)["acknowledged"])
+        self.assertNotIn("opened_at", self.state().get("auto_open", {}))
+
+    def test_resume_recovers_preinstallation_session_once_and_preserves_optouts(self):
+        payload = {"session_id": self.thread, "source": "resume"}
+        resumed = client_hooks.handle(self.root, "codex", "SessionStart", payload)
+        context = resumed["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("auto-open claim", context)
+        self.assertIn("started or resumed", context)
+        claim = auto_open.claim(self.root, self.thread)
+        auto_open.settle(self.root, self.thread, claim["claim"], opened=True)
+        again = client_hooks.handle(self.root, "codex", "SessionStart", payload)
+        self.assertNotIn("Auto-open is enabled", again["hookSpecificOutput"]["additionalContext"])
+        for case in ({"session_id": "background", "source": "resume", "is_subagent": True},
+                     {"session_id": "background", "source": "resume", "is_background_agent": True}):
+            client_hooks.handle(self.root, "codex", "SessionStart", case)
+            self.assertIsNone(canvas.read_json(canvas.task_dir(self.root, "background") / "state.json"))
+        canvas.mutate(self.root, self.thread, lambda state: state.update(enabled=False))
+        client_hooks.handle(self.root, "codex", "SessionStart", payload)
+        self.assertFalse(self.state()["enabled"])
+        auto_open.preference(self.root, False)
+        client_hooks.handle(self.root, "codex", "SessionStart", {"session_id": "off", "source": "resume"})
+        self.assertIsNone(canvas.read_json(canvas.task_dir(self.root, "off") / "state.json"))
 
     def test_stopped_and_opted_out_sessions_do_not_reopen(self):
         auto_open.prepare(self.root, self.thread)

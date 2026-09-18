@@ -39,7 +39,7 @@ def foreground_start(client, payload):
     if payload.get("parent_session_id") or payload.get("parent_agent_id"):
         return False
     source = payload.get("source", "startup" if client == "cursor" else None)
-    return source == "startup"
+    return source in {"startup", "resume"}
 
 
 def prepare(root, thread):
@@ -63,17 +63,41 @@ def prepare(root, thread):
     return ready
 
 
-def claim(root, thread):
-    result = {"should_open": False}
-    if not enabled(root):
+def opening_status(state):
+    """Report dispatch evidence, never claim knowledge of host-panel visibility."""
+    if state is None:
+        status = "not_started"
+    elif not state.get("enabled"):
+        status = "stopped"
+    elif state.get("auto_open", {}).get("claim", {}).get("expires", 0) > time.time():
+        status = "pending"
+    elif state.get("auto_open", {}).get("opened_at"):
+        status = "dispatched"
+    else:
+        status = "unacknowledged"
+    return {"status": status, "visibility": "unverified"}
+
+
+def claim(root, thread, manual=False):
+    result = {"should_open": False, "reason": "stopped"}
+    if not manual and not enabled(root):
+        result["reason"] = "auto_open_off"
         return result
+    if not manual:
+        # Recovery also works when SessionStart did not initialize this session.
+        # prepare preserves explicit stop and the global automatic-opening opt-out.
+        prepare(root, thread)
     def apply(state):
         opening = state.setdefault("auto_open", {})
-        if opening.get("opened_at") or opening.get("claim", {}).get("expires", 0) > time.time():
+        if opening.get("claim", {}).get("expires", 0) > time.time():
+            result["reason"] = "in_progress"
+            return False
+        if opening.get("opened_at") and not manual:
+            result["reason"] = "already_dispatched"
             return False
         token = secrets.token_hex(16)
-        opening["claim"] = {"token": token, "expires": time.time() + CLAIM_SECONDS}
-        result.update(should_open=True, claim=token)
+        opening["claim"] = {"token": token, "expires": time.time() + CLAIM_SECONDS, "manual": manual}
+        result.update(should_open=True, claim=token, reason="explicit_request" if manual else "needs_open")
     canvas.mutate(root, thread, apply, enabled_only=True)
     return result
 
@@ -87,7 +111,7 @@ def settle(root, thread, token, opened=False, opener=None):
         lease = opening.get("claim", {})
         if not token or lease.get("token") != token or lease.get("expires", 0) <= time.time():
             return False
-        if opened and not enabled(root):
+        if opened and not enabled(root) and not lease.get("manual"):
             opening.pop("claim", None)
             return
         if opener:
@@ -107,11 +131,14 @@ def native_instruction(root, thread, prefix, client):
                if client == "codex" else "the built-in browser tool if exposed; otherwise the OS browser")
     # Commands claim before UI work, so repeated SessionStart context cannot open
     # duplicate panes. Tool failure releases the claim; a crashed turn expires it.
-    return ("Auto-open is enabled. On this session's first user turn, before answering, run " + prefix +
+    return ("Auto-open is enabled. On the next user turn in this started or resumed session, before answering, run " + prefix +
             " auto-open claim. Only if should_open is true: run the same prefix with start --auto-claim <returned-claim>, open its URL using " + browser +
             ", then run the same prefix with auto-open opened --claim <returned-claim>. "
+            "A queued host result is not an opened view: release the claim and explain that it awaits the target task being shown. "
+            "After completed dispatch, inspect the target browser/tab when tools expose it; otherwise report visibility unverified. "
             "If start/open fails, run auto-open release --claim <returned-claim> and continue normally. "
-            "Do not ask for permission, open again after acknowledgement, or create an extra model turn. ")
+            "An enabled canvas or a successful update does not prove a visible view. On later ordinary user turns, status --summary reports opening; "
+            "retry an unacknowledged or not_started opening with auto-open claim. Do not automatically reopen after acknowledgement or create an extra model turn. ")
 
 
 def launch(root, thread):

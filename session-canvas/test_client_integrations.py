@@ -30,19 +30,42 @@ class ClientHooksTests(unittest.TestCase):
     def enable(self, client):
         canvas.mutate(self.root, client + ":same-id", lambda state: state.update(enabled=True))
 
-    def test_session_start_injects_identity_without_creating_state(self):
+    def test_session_start_preserves_identity_and_recovers_foreground_resume(self):
         claude = client_hooks.handle(self.root, "claude", "SessionStart", {"session_id": "same-id"})
         cursor = client_hooks.handle(self.root, "cursor", "sessionStart", {"conversation_id": "same-id", "session_id": "wrong-id", "source": "resume"})
         self.assertIn("--client claude --session-id same-id", claude["hookSpecificOutput"]["additionalContext"])
         self.assertIn("--client cursor --session-id same-id", cursor["additional_context"])
         self.assertEqual(cursor["env"]["LIVE_CANVAS_SESSION_ID"], "same-id")
-        self.assertFalse(self.root.exists())
+        self.assertIsNone(self.state("claude"))  # Missing Claude source is not a foreground start.
+        self.assertTrue(self.state("cursor")["enabled"])
+        self.assertEqual(self.state("cursor")["thread"], "cursor:same-id")
+        self.assertIsNone(canvas.read_json(canvas.task_dir(self.root, "cursor:wrong-id") / "state.json"))
+        self.assertIn("auto-open claim", cursor["additional_context"])
+        self.assertIn("started or resumed", cursor["additional_context"])
+        self.assertNotIn("opened_at", self.state("cursor").get("auto_open", {}))
 
     def test_cursor_session_start_accepts_documented_session_id_fallback(self):
         result = client_hooks.handle(self.root, "cursor", "sessionStart", {"session_id": "same-id", "source": "resume"})
         self.assertEqual(result["env"]["LIVE_CANVAS_SESSION_ID"], "same-id")
         self.assertIn("--session-id same-id", result["additional_context"])
-        self.assertFalse(self.root.exists())
+        self.assertTrue(self.state("cursor")["enabled"])
+        self.assertEqual(self.state("cursor")["thread"], "cursor:same-id")
+        self.assertIn("auto-open claim", result["additional_context"])
+        self.assertNotIn("opened_at", self.state("cursor").get("auto_open", {}))
+
+    def test_cursor_background_resume_and_nonstartup_sources_only_inject_identity(self):
+        cases = [{"source": "resume", "is_background_agent": True},
+                 {"source": "resume", "is_subagent": True},
+                 {"source": "resume", "interactive": False},
+                 {"source": "clear"}, {"source": "compact"}, {"source": "fork"}]
+        for attributes in cases:
+            with self.subTest(attributes=attributes):
+                result = client_hooks.handle(self.root, "cursor", "sessionStart",
+                                             {"conversation_id": "same-id", **attributes})
+                self.assertEqual(result["env"]["LIVE_CANVAS_SESSION_ID"], "same-id")
+                self.assertNotIn("Auto-open is enabled", result["additional_context"])
+                self.assertIsNone(self.state("cursor"))
+                self.assertFalse(self.root.exists())
 
     def test_realistic_final_messages_are_isolated_and_exclude_private_fields(self):
         self.enable("claude")

@@ -753,7 +753,9 @@ def status_summary_result(state, thread, state_file, limit=SUMMARY_MAX):
     """Budget the whole CLI response, retaining exact metadata or omitting it."""
     if limit < 256:
         raise ValueError("Status response budget must be at least 256 characters")
+    import auto_open
     result = {"thread": thread, "enabled": bool(state and state["enabled"]),
+              "opening": auto_open.opening_status(state),
               "revision": state["revision"] if state else None,
               "summary": None, "state_file": str(state_file)}
     encoded = lambda: json.dumps(result, ensure_ascii=False, separators=(",", ":"))
@@ -796,6 +798,7 @@ def main():
     opening.add_argument("action", choices=("on", "off", "status", "claim", "opened", "release"))
     opening.add_argument("--thread")
     opening.add_argument("--claim")
+    opening.add_argument("--manual", action="store_true", help="Claim a reopening only for an explicit user request, after start")
     args = parser.parse_args()
     root = Path(args.home).expanduser().resolve() if args.home else home()
     try:
@@ -816,13 +819,15 @@ def main():
             return 0
         if args.command == "auto-open":
             import auto_open
+            if args.manual and args.action != "claim":
+                raise ValueError("--manual applies only to auto-open claim")
             if args.action in {"on", "off", "status"}:
                 print(json.dumps(auto_open.preference(root, {"on": True, "off": False}.get(args.action))))
                 return 0
             thread = args.thread or os.environ.get("CODEX_THREAD_ID")
             if not thread:
                 raise ValueError("Task identity required for an opening claim")
-            result = auto_open.claim(root, thread) if args.action == "claim" else auto_open.settle(
+            result = auto_open.claim(root, thread, manual=args.manual) if args.action == "claim" else auto_open.settle(
                 root, thread, args.claim, opened=args.action == "opened")
             print(json.dumps(result))
             return 0
@@ -853,6 +858,8 @@ def main():
                         lease.get("token") != args.auto_claim or lease.get("expires", 0) <= time.time()):
                         raise ValueError("Automatic opening was stopped, disabled, or its claim expired")
                 state["enabled"] = args.command == "start"
+                if args.command == "stop":
+                    state.get("auto_open", {}).pop("claim", None)
                 if transcript and state.get("transcript", {}).get("path") != str(transcript):
                     state["transcript"] = {"path": str(transcript), "offset": 0, "error": None}
             state = mutate(root, thread, enable)
@@ -871,7 +878,9 @@ def main():
             if args.command == "start":
                 raise
             info, health_unavailable = exc.info, True
+        import auto_open
         print(json.dumps({"thread": thread, "enabled": bool(state and state["enabled"]),
+                          "opening": auto_open.opening_status(state),
                           "revision": state["revision"] if state else None,
                           "server_running": None if health_unavailable else bool(info),
                           "server_status": "health unavailable: local networking blocked" if health_unavailable else "running" if info else "stopped",
