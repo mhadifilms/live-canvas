@@ -1,0 +1,56 @@
+{
+  "context": {
+    "id": "example-study",
+    "label": "Studying",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "Photosynthesis retrieval practice",
+  "sections": [
+    {
+      "id": "recall",
+      "title": "Try before revealing",
+      "blocks": [
+        {
+          "id": "cards",
+          "type": "reveal",
+          "items": [
+            {
+              "id": "energy",
+              "prompt": "Where does the energy for photosynthesis come from?",
+              "answer": "Light energy, usually from the Sun."
+            },
+            {
+              "id": "role",
+              "prompt": "What does chlorophyll do?",
+              "answer": "It absorbs light energy used in photosynthesis."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "connections",
+      "title": "Connect the concepts",
+      "blocks": [
+        {
+          "id": "concepts",
+          "type": "list",
+          "items": [
+            "Light is the energy input.",
+            "Carbon dioxide and water supply matter."
+          ]
+        },
+        {
+          "id": "gaps",
+          "type": "checklist",
+          "items": [
+            {
+              "text": "Explain the distinction between energy and matter in your own words.",
+              "checked": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

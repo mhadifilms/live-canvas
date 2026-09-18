@@ -1,0 +1,65 @@
+{
+  "context": {
+    "id": "example-video",
+    "label": "Shaping an edit",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "An arrival, a problem, a resolution",
+  "sections": [
+    {
+      "id": "sequence",
+      "title": "Proposed story beats",
+      "blocks": [
+        {
+          "id": "beats",
+          "type": "timeline",
+          "items": [
+            {
+              "label": "Arrival",
+              "detail": "Establish the place and the central character."
+            },
+            {
+              "label": "Complication",
+              "detail": "Introduce the obstacle using an observed moment from the footage."
+            },
+            {
+              "label": "Resolution",
+              "detail": "End on the consequence of the character\u2019s choice."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "notes",
+      "title": "Source review",
+      "blocks": [
+        {
+          "id": "shots",
+          "type": "text",
+          "text": "Illustrative structure only. Match these beats to actual source footage before selecting shots or assigning timecodes."
+        }
+      ]
+    },
+    {
+      "id": "export",
+      "title": "Finishing checks",
+      "blocks": [
+        {
+          "id": "delivery",
+          "type": "checklist",
+          "items": [
+            {
+              "text": "Confirm the requested frame rate and delivery format.",
+              "checked": false
+            },
+            {
+              "text": "Watch the exported file from beginning to end.",
+              "checked": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

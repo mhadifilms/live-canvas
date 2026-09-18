@@ -1,0 +1,30 @@
+# Private runtime state and local work
+**/.state/
+**/logs/
+**/work/
+*.log
+*.jsonl
+.live-canvas-backups/
+.live-canvas-install.json
+.live-canvas-install.lock
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Python and editor output
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+.idea/
+.vscode/

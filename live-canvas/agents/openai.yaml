@@ -1,0 +1,4 @@
+interface:
+  display_name: "Live Canvas"
+  short_description: "Keep a live visual canvas beside your Codex task"
+  default_prompt: "Open a live canvas for this task and keep its decisions, diagrams, and next steps current."

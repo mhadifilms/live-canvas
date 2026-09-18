@@ -1,0 +1,75 @@
+{
+  "context": {
+    "id": "example-custom",
+    "label": "Planning together",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "A neighborhood repair workshop",
+  "sections": [
+    {
+      "id": "plan",
+      "title": "An outline to discuss",
+      "blocks": [
+        {
+          "id": "agenda",
+          "type": "timeline",
+          "items": [
+            {
+              "label": "Welcome",
+              "detail": "Invite participants to name what they want to learn."
+            },
+            {
+              "label": "Small-group practice",
+              "detail": "Pair people by the object or skill they bring."
+            },
+            {
+              "label": "Share discoveries",
+              "detail": "Capture useful techniques and unresolved questions."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resources",
+      "title": "What we need to learn",
+      "blocks": [
+        {
+          "id": "needs",
+          "type": "table",
+          "columns": [
+            "Resource",
+            "Open question"
+          ],
+          "rows": [
+            [
+              "Space",
+              "Which available space is accessible?"
+            ],
+            [
+              "Tools",
+              "What can participants safely bring?"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "facilitation",
+      "title": "A prompt for the group",
+      "blocks": [
+        {
+          "id": "reflection",
+          "type": "reveal",
+          "items": [
+            {
+              "id": "prompt",
+              "prompt": "What would make this workshop welcoming to beginners?",
+              "answer": "Example discussion leads: plain language, time to observe, and permission to ask basic questions."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

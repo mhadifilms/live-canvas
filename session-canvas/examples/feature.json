@@ -1,0 +1,56 @@
+{
+  "context": {
+    "id": "example-feature",
+    "label": "Designing a feature",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "Save draft before leaving",
+  "sections": [
+    {
+      "id": "behavior",
+      "title": "Intended behavior",
+      "blocks": [
+        {
+          "id": "contract",
+          "type": "text",
+          "text": "Proposed behavior: keep a local draft after an accidental navigation. Confirm product requirements before implementation."
+        }
+      ]
+    },
+    {
+      "id": "implementation",
+      "title": "Implementation sketch",
+      "blocks": [
+        {
+          "id": "parts",
+          "type": "list",
+          "items": [
+            "Define the saved draft format.",
+            "Restore only compatible drafts.",
+            "Provide an explicit discard action."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "title": "Checks to perform",
+      "blocks": [
+        {
+          "id": "validation",
+          "type": "checklist",
+          "items": [
+            {
+              "text": "Verify draft recovery after navigation.",
+              "checked": false
+            },
+            {
+              "text": "Verify discard removes the saved draft.",
+              "checked": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

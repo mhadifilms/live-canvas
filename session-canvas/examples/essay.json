@@ -1,0 +1,58 @@
+{
+  "context": {
+    "id": "example-essay",
+    "label": "Drafting an essay",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "Libraries as public infrastructure",
+  "sections": [
+    {
+      "id": "argument",
+      "title": "Working thesis",
+      "blocks": [
+        {
+          "id": "thesis",
+          "type": "text",
+          "text": "Public libraries can be evaluated as shared civic infrastructure as well as collections of books. This is a proposed argument, not a sourced conclusion."
+        }
+      ]
+    },
+    {
+      "id": "outline",
+      "title": "Argument path",
+      "blocks": [
+        {
+          "id": "steps",
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Define the infrastructure claim.",
+            "Examine access to space, information, and support.",
+            "Address the strongest alternative use of public funds.",
+            "Return to a specific, defensible conclusion."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "Evidence still needed",
+      "blocks": [
+        {
+          "id": "leads",
+          "type": "checklist",
+          "items": [
+            {
+              "text": "Find and verify local library usage data.",
+              "checked": false
+            },
+            {
+              "text": "Identify a credible counterargument.",
+              "checked": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

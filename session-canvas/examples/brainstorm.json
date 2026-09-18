@@ -1,0 +1,57 @@
+{
+  "context": {
+    "id": "example-brainstorm",
+    "label": "Exploring possibilities",
+    "description": "Illustrative example only; not a record of actual work or verified progress."
+  },
+  "title": "A small community gathering",
+  "sections": [
+    {
+      "id": "ideas",
+      "title": "Candidate directions",
+      "blocks": [
+        {
+          "id": "groups",
+          "type": "list",
+          "items": [
+            "A shared table: participants bring a story behind an object.",
+            "A listening walk: compare observations of the same place.",
+            "A repair afternoon: learn by fixing something together."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "title": "What each idea asks of us",
+      "blocks": [
+        {
+          "id": "tradeoffs",
+          "type": "table",
+          "columns": [
+            "Direction",
+            "Strength",
+            "Question"
+          ],
+          "rows": [
+            [
+              "Shared table",
+              "Easy conversation starter",
+              "Who facilitates?"
+            ],
+            [
+              "Listening walk",
+              "A shared experience",
+              "What is the accessible route?"
+            ],
+            [
+              "Repair afternoon",
+              "Practical learning",
+              "What tools and expertise are available?"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
