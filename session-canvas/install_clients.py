@@ -182,6 +182,8 @@ def main(argv=None):
                 {"client": item["client"], "installed": item["installed"], "config": str(item["config_path"]),
                  "skill": str(item["skill_path"]), "source": str(SKILL), "events": list(entries(item["client"])),
                  "host_requirement": "Enable Codex hooks with: codex features enable hooks" if item["client"] == "codex" else None,
+                 "readiness": "requires_host_verification" if item["client"] == "codex" else "files_checked",
+                 "next_step": "In Codex /hooks, review and trust Live Canvas SessionStart; then open a new chat and send its first message." if item["client"] == "codex" else "Start a new host session to verify hook loading.",
                  "would_change_config": item["original"] != item["updated"]} for item in plans]}, indent=2))
             return int(args.action == "check" and not all(item["installed"] for item in plans))
         results = []
@@ -193,6 +195,10 @@ def main(argv=None):
                 if fresh != item:
                     raise ValueError("Configuration changed during preflight; retry after reviewing it")
                 results.append(apply(fresh))
+        for result in results:
+            if result["client"] == "codex" and args.action == "install":
+                result["readiness"] = "requires_host_verification"
+                result["next_step"] = "In Codex /hooks, review and trust Live Canvas SessionStart; then open a new chat and send its first message."
         print(json.dumps({"action": args.action, "clients": results}, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, TimeoutError) as exc:

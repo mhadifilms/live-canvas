@@ -256,3 +256,41 @@ test('failed bootstrap keeps no credential in the URL and does not request task 
   assert.deepEqual(calls, ['/quiz-review/_auth']);
   assert.equal(app.elements.get('connection').dataset.live, 'false');
 });
+
+
+test('presentation focus is validated and never modifies authored sections', () => {
+  const app = viewer();
+  const authored = { thread: 'focus-test', content: { title: 'Task', sections: [
+    { id: 'a', title: 'A', blocks: [{ id: 'one', type: 'text', text: 'First authored section' }] },
+    { id: 'b', title: 'B', blocks: [{ id: 'two', type: 'text', text: 'Second authored section' }] },
+  ] }, presentation: { status: 'focused', focus_id: 'b' } };
+  app.evaluate(`render(${JSON.stringify(authored)})`);
+  assert.equal(app.elements.get('work').children[0].dataset.sectionId, 'b');
+  assert.equal(app.elements.get('work').children[1].children[0].tagName, 'details');
+  assert.equal(app.evaluate('state.content.sections[0].id'), 'a');
+  assert.equal(app.evaluate(`presentationFocus(${JSON.stringify({ ...authored, presentation: { status: 'focused', focus_id: 'invented' } })})`), null);
+  app.elements.get('adaptive-layout').checked = false;
+  app.elements.get('adaptive-layout').onchange();
+  assert.equal(app.elements.get('work').children[0].dataset.sectionId, 'a');
+  assert.equal(app.storage.get('live-canvas-adaptive-layout'), 'off');
+});
+
+test('derived focus waits while work is active and stale focus clears with authored changes', () => {
+  const app = viewer();
+  const authored = { thread: 'focus-test', content: { sections: [
+    { id: 'a', title: 'A', blocks: [{ id: 'one', type: 'text', text: 'First' }] },
+    { id: 'b', title: 'B', blocks: [{ id: 'two', type: 'text', text: 'Second' }] },
+  ] } };
+  app.evaluate(`render(${JSON.stringify(authored)})`);
+  const work = app.elements.get('work');
+  work.contains = () => true;
+  app.evaluate("document.activeElement = document.createElement('button')");
+  app.evaluate(`render(${JSON.stringify({ ...authored, presentation: { status: 'focused', focus_id: 'b' } })})`);
+  assert.equal(work.children[0].dataset.sectionId, 'a');
+  work.contains = () => false;
+  app.evaluate('render(state)');
+  assert.equal(work.children[0].dataset.sectionId, 'b');
+  work.contains = () => true;
+  app.evaluate(`render(${JSON.stringify(authored)})`);
+  assert.equal(work.children[0].dataset.sectionId, 'a');
+});

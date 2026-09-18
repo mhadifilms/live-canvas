@@ -253,6 +253,8 @@ def update_content(root, thread, patch):
             "fields": changed, "reason": "context switch" if switched else "replacement" if replace else "update", "content": old})
         state["history"] = state["history"][:20]
         state["content"] = target
+        if reset or set(changed) & {"title", "context", "current", "outcome", "sections"}:
+            state.pop("presentation", None)
         state["curated_at"] = stamp
         for name in changed:
             state["content_updated_at"][name] = stamp
@@ -644,6 +646,8 @@ def serve(root):
     atomic_json(root / "server.json", info)
     stopped = threading.Event()
     threading.Thread(target=follow_loop, args=(root, stopped), daemon=True).start()
+    import typesafe_presentation
+    threading.Thread(target=typesafe_presentation.run, args=(root, stopped), daemon=True).start()
     def stop(*_):
         threading.Thread(target=server.shutdown, daemon=True).start()
     signal.signal(signal.SIGTERM, stop)
@@ -783,6 +787,8 @@ def main():
             child.add_argument("--event")
     sub.add_parser("shutdown", help="Stop the shared server; preserve all task data")
     sub.add_parser("_serve", help=argparse.SUPPRESS)
+    adaptive = sub.add_parser("adaptive", help="Configure optional TypeSafe presentation (no inference from this command)")
+    adaptive.add_argument("action", choices=("on", "off", "status", "retry"))
     opening = sub.add_parser("auto-open", help="Toggle automatic opening or acknowledge a client UI open")
     opening.add_argument("action", choices=("on", "off", "status", "claim", "opened", "release"))
     opening.add_argument("--thread")
@@ -798,6 +804,10 @@ def main():
             if info:
                 os.kill(info["pid"], signal.SIGTERM)
             print(json.dumps({"shutdown_requested": bool(info)}))
+            return 0
+        if args.command == "adaptive":
+            import typesafe_presentation
+            print(json.dumps(typesafe_presentation.preference(root, args.action), indent=2))
             return 0
         if args.command == "auto-open":
             import auto_open

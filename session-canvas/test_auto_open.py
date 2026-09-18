@@ -222,6 +222,17 @@ class AutoInstallTests(unittest.TestCase):
                     "http://localhost/", "http://localhost:invalid/"):
             self.assertFalse(auto_open.valid_viewer_url(url))
 
+    def test_codex_installer_distinguishes_files_from_host_trust(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = install_clients.main(["dry-run", "--client", "codex", "--user-home", directory])
+            self.assertEqual(result, 0)
+            item = json.loads(output.getvalue())["clients"][0]
+            self.assertEqual(item["readiness"], "requires_host_verification")
+            self.assertIn("/hooks", item["next_step"])
+            self.assertIn("trust", item["next_step"])
+
 
 if __name__ == "__main__":
     unittest.main()

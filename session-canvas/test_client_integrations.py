@@ -120,6 +120,15 @@ class ClientHooksTests(unittest.TestCase):
         self.assertEqual(execute.call_args.args[1][-2:], ["shutdown", "--help"])
         self.assertNotIn("--thread", execute.call_args.args[1])
 
+    def test_wrapper_adaptive_status_is_global_under_client_environment(self):
+        wrapper = Path(client_hooks.__file__).resolve().parents[1] / "live-canvas/scripts/live_canvas.py"
+        with patch.dict(os.environ, {"LIVE_CANVAS_CLIENT": "cursor", "LIVE_CANVAS_SESSION_ID": "same-id"}, clear=True), \
+             patch.object(sys, "argv", [str(wrapper), "adaptive", "status"]), \
+             patch("os.execv") as execute:
+            runpy.run_path(str(wrapper), run_name="__main__")
+        self.assertEqual(execute.call_args.args[1][-2:], ["adaptive", "status"])
+        self.assertNotIn("--thread", execute.call_args.args[1])
+
 
 class InstallerTests(unittest.TestCase):
     def setUp(self):

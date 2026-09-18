@@ -20,7 +20,7 @@ Codex follows only a registered transcript whose metadata matches the selected t
 
 ## Cost and limitations
 
-Automatic observations make no model calls. `status --summary` returns an entire response capped at 4,000 serialized characters so authored updates can use bounded context. Truncation makes finite progress even with oversized identity/context metadata; unusably long top-level metadata is omitted explicitly, not returned as a partial path. Semantic organization remains the assistant's responsibility; activity is not proof of progress or completion.
+Automatic observations make no model calls. An independently opted-in TypeSafe worker can select a derived section focus after authored changes; it does not observe feed or browser interactions. `status --summary` returns an entire response capped at 4,000 serialized characters so authored updates can use bounded context. Truncation makes finite progress even with oversized identity/context metadata; unusably long top-level metadata is omitted explicitly, not returned as a partial path. Semantic organization remains the assistant's responsibility; activity is not proof of progress or completion.
 
 Hook responses arrive at message boundaries. Missed hook events are not replayed; transcript history can take several polling cycles to catch up. A quiet canvas retains its last useful content. Capability URLs protect local routes, but they are not an authentication boundary against the same OS user. This package targets local macOS/Linux clients and uses Unix file locking.
 
@@ -29,3 +29,9 @@ Hook responses arrive at message boundaries. Missed hook events are not replayed
 Run `python3 -m unittest discover -s session-canvas -v` and `node --test session-canvas/test_viewer.mjs` from the repository root. Node helper tests do not replace real browser checks. The suite covers session separation, atomic writes, event privacy, transcript recovery, content validation, HTTP restrictions, wrapper routing, and reversible installation.
 
 Manual client verification should confirm skill discovery, SessionStart identity, completed-response hook delivery, browser opening, automatic refresh without reload, narrow and light/dark layouts, context changes, and server restart. CI fixtures exercise the contracts without claiming that a particular client has loaded its hooks.
+
+## Optional semantic presentation
+
+Authored content remains the source of truth. The TypeSafe worker proposes only a focus ID selected from a code-owned bounded candidate set. It stores the derived result beside content, preserving edit timestamps and history. Full relevant-input/context/policy fingerprints guard stale responses and cached decisions; authored mutations clear obsolete focus immediately. The viewer validates the focus ID again and defers rearrangement while its work is actively used.
+
+Opt-in persists in private preferences; API credentials stay in the server environment. A fixed HTTPS endpoint, byte-bounded excerpts, sequential requests, persistent atomic daily reservations, request/response limits, and a cache bound cap work. Failure statuses retain the authored layout. Explicit retry preserves the daily ledger, and stale pending reservations expire rather than permanently blocking a task. No inference is initiated by GET requests, UI polling, transcript events, or the status command. The browser preference controls rendering; the global adaptive preference controls remote inference.

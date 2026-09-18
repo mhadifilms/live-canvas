@@ -2,7 +2,7 @@
 
 A small, local workspace beside your AI conversation. Keep the actual work visible: an outline, evidence, decisions, study questions, edit beats, or a diagram. The assistant updates authored sections at meaningful milestones; lightweight local adapters bring in activity and visible responses automatically.
 
-Python standard library only. No API keys, packages, hosted service, or background model calls. The viewer has light and dark themes, six flexible content blocks, and useful browser-local interactions. It never writes back to the assistant or runtime.
+Python standard library only. Default local mode needs no API key, packages, hosted service, or background model calls. Optional TypeSafe integration can select a focus section from existing authored work. The viewer has light and dark themes, six flexible content blocks, and useful browser-local interactions. It never writes back to the assistant or runtime.
 
 ![Live Canvas running beside a conversation in the Codex desktop app](docs/images/live-canvas-codex.png)
 
@@ -37,7 +37,7 @@ For Codex, enable the host's hooks feature if needed with `codex features enable
 
 Resume, clear, compact, and fork events do not trigger automatic opening. Background/subagent/noninteractive sessions are skipped when the payload identifies them; hosts do not always expose those indicators. Per-session claims suppress repeated openings, and explicit `stop` remains stopped. Opening failures are retryable; after an interrupted attempt, a claim expires after five minutes. A crash between opening a UI and acknowledgement can cause a later retry to open it again.
 
-Codex may ask you to review and trust a newly installed hook through its normal approval prompt. The installer does not bypass hook trust.
+Codex requires host approval for an untrusted installed hook. Open `/hooks`, review and trust the Live Canvas SessionStart command, then begin a new chat and send its first message. Installer `check` verifies files, not host trust or actual execution; its Codex readiness is `requires_host_verification`. The installer never changes hook trust.
 
 Keep this checkout in place because the installed hooks and skill reference it. To move an installation, uninstall from the original checkout first. You can still ask **“open live canvas”** or invoke `/live-canvas` for manual use.
 
@@ -103,3 +103,17 @@ CI runs the Python suite on 3.10 and 3.12, plus dependency-free Node tests for v
 Inspired by [sebi75/herdr-canvas](https://github.com/sebi75/herdr-canvas). Live Canvas does not require Herdr. Licensed under [MIT](LICENSE).
 
 Readable routes stay fixed after their first opening, even when the title changes. Duplicate names receive a short task suffix. Chromium-based host panels support `canvas.localhost`; the external-browser startup helper defaults to `localhost`. If your browser cannot resolve the branded name, set `LIVE_CANVAS_HOST=localhost` (or `127.0.0.1`) when running the command that returns the URL. No hosts-file edits are needed. Cookies and browser-only choices belong to each origin: old capability links still open and clean themselves on their original origin, preserving choices there; switching hostname or port does not migrate those choices. After upgrading a running installation, run `shutdown` and then `start` to load the new server code.
+
+## Optional TypeSafe focus
+
+TypeSafe can choose which existing section to put first and collapse the others. It never generates content or changes authored history. This feature sends bounded authored task context and section excerpts to TypeSafe, so it is off until explicitly enabled:
+
+```sh
+# Supply TYPESAFE_API_KEY to the environment that starts the local server.
+python3 session-canvas/canvas.py adaptive on
+python3 session-canvas/canvas.py adaptive status
+# Disable remote selection and return to the authored layout:
+python3 session-canvas/canvas.py adaptive off
+```
+
+The preference survives restarts; the key is never written to canvas files or sent to the browser. Restart an already-running server after adding its key to the environment. Defaults are 12 calls and 48,000 encoded input bytes per UTC day, shared across tasks. No calls happen on browser refresh or automatic activity. Missing keys, failures, uncertain results, and exhausted budgets retain the authored layout. `adaptive retry` requests a bounded retry after a transient failure; it cannot reset the budget. In Settings, **Follow suggested focus** controls this browser's layout only, while `adaptive off` controls remote inference. See [configuration and limitations](session-canvas/README.md#optional-typesafe-presentation).

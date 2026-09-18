@@ -21,6 +21,7 @@
 .secondary-panels{margin-top:28px;padding-top:10px;border-top:1px solid var(--line)}.secondary-panel>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none;min-height:38px;color:var(--muted);font-size:12px}.secondary-panel>summary::-webkit-details-marker{display:none}.secondary-panel>summary:after{content:'›';font-size:18px;line-height:1;transform:rotate(0)}.secondary-panel[open]>summary:after{transform:rotate(90deg)}.secondary-panel>summary span:last-child{margin-left:auto;font-size:11px}.panel-scroll{max-height:270px;overflow:auto;overscroll-behavior:contain;padding:3px 8px 10px 0}.entry{padding:10px 0}.entry+.entry{border-top:1px solid var(--line)}.entry-head{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:11px;margin-bottom:5px}.entry p{font-size:13px;line-height:1.5}.entry details{margin-top:7px}.entry summary{color:var(--muted);cursor:pointer;font-size:12px}.history-preview{padding:9px 0 0 10px}.history-preview h3{font-size:13px;font-weight:600;margin-bottom:4px}.history-preview p+p{margin-top:8px}.panel-note{font-size:11px;color:var(--muted);padding:5px 0}.toast{position:fixed;z-index:20;bottom:16px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);background:var(--raised);box-shadow:var(--shadow);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:12px}
 @media(max-width:520px){table.wide,table.wide tbody,table.wide tr,table.wide td{display:block}table.wide thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}table.wide tr{padding:11px 12px;background:var(--surface);border-radius:7px;margin-bottom:8px}table.wide td{padding:5px 0;border:0;display:grid;grid-template-columns:minmax(72px,28%) minmax(0,1fr);gap:12px}table.wide td:first-child{font-weight:600}table.wide .cell-label{display:block;font-size:11px;color:var(--muted);font-weight:400}table.wide .cell-value{min-width:0}main{padding:16px 16px 24px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+.adaptive-section>summary{font-size:14px;font-weight:600;cursor:pointer;padding:8px 0}.adaptive-section[open]>summary{margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -29,6 +30,7 @@
   <div class="toolbar"><div class="heading"><h1 id="title">Live Canvas</h1></div><div class="header-actions">
     <button id="copy-work" class="icon-button" aria-label="Copy authored work" title="Copy authored work" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="2"/><path d="M12 6V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v8a1 1 0 0 0 1 1h3"/></svg></button>
     <details class="settings" id="settings"><summary class="icon-button" aria-label="Canvas settings" title="Canvas settings"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></summary><div class="settings-popover">
+      <label><input id="adaptive-layout" type="checkbox" checked> Follow suggested focus</label><p id="adaptive-status" class="local-note">Original authored layout</p><p class="local-note">Browser layout only. Remote inference is controlled by the local server.</p>
       <label for="theme-select">Appearance <select id="theme-select"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <p id="storage-note">Checks, shortlists, and practice are saved in this browser only. They are not sent to the assistant.</p>
       <button id="reset-local" class="quiet">Reset my interactions</button>
@@ -251,20 +253,41 @@ function renderBlock(block, sectionId) {
   else if (block.type === 'timeline') { const list = node('ol', undefined, 'timeline'); block.items.filter(item => item.label.trim()).forEach(item => { const li = node('li'), content = node('div'); if (item.at) content.append(node('time', item.at)); content.append(node('strong', item.label)); if (item.detail) content.append(paragraph(item.detail, 'detail rich-text')); li.append(content); list.append(li); }); host.append(list); foldCollection(list, JSON.stringify([sectionId, block.id, 'timeline-more', block.items]), 5, 'steps'); }
   return host;
 }
+let appliedFocus = null, focusBoundary = '';
+function presentationFocus(data, enabled = true) {
+  const candidate = data.presentation;
+  return enabled && candidate?.status === 'focused' && (data.content.sections || []).some(section => section.id === candidate.focus_id) ? candidate.focus_id : null;
+}
 function renderWork(data, force = false) {
-  const content = data.content, signature = JSON.stringify([boundary, content.sections, content.decisions, content.open, content.next]);
+  const content = data.content, desiredFocus = presentationFocus(data, $('adaptive-layout').checked);
+  if (focusBoundary !== boundary) { focusBoundary = boundary; appliedFocus = null; }
+  if (data.presentation?.status !== 'focused') appliedFocus = null;
+  const busy = !!($('work').querySelector('details[open]') || (document.activeElement && $('work').contains?.(document.activeElement)));
+  if (force || !busy) appliedFocus = desiredFocus;
+  if (!(content.sections || []).some(section => section.id === appliedFocus)) appliedFocus = null;
+  const signature = JSON.stringify([boundary, content.sections, content.decisions, content.open, content.next, appliedFocus]);
+  const labels = { focused: 'TypeSafe selected a focus section', unchanged: 'TypeSafe kept the authored layout', uncertain: 'No clear focus · authored layout', 'missing-key': 'TypeSafe key unavailable · authored layout', unavailable: 'TypeSafe unavailable · authored layout', 'budget-exhausted': 'Daily TypeSafe budget reached · authored layout', 'invalid-response': 'TypeSafe result rejected · authored layout', 'not-needed': 'Original authored layout' };
+  $('adaptive-status').textContent = !$('adaptive-layout').checked ? 'Original layout · browser preference' : busy && desiredFocus !== appliedFocus ? 'Layout update waiting while you use this view' : labels[data.presentation?.status] || 'Original authored layout';
   if (signature === workSignature && !force) return;
   workSignature = signature; $('work').replaceChildren();
-  for (const section of content.sections || []) {
+  const sections = [...(content.sections || [])];
+  if (appliedFocus) sections.sort((a, b) => Number(b.id === appliedFocus) - Number(a.id === appliedFocus));
+  for (const section of sections) {
     const blocks = section.blocks.filter(visibleBlock); if (!blocks.length) continue;
     const el = node('section', undefined, 'work-section'); el.dataset.sectionId = section.id;
-    if (section.title) { const heading = node('div', undefined, 'section-heading'); heading.append(node('h2', section.title)); el.append(heading); }
-    blocks.forEach(block => el.append(renderBlock(block, section.id))); $('work').append(el);
+    if (appliedFocus && section.id !== appliedFocus) {
+      const detail = disclosure(section.title || 'Work section', JSON.stringify(['adaptive-section', section.id]));
+      detail.className = 'adaptive-section'; blocks.forEach(block => detail.append(renderBlock(block, section.id))); el.append(detail);
+    } else {
+      if (section.title) { const heading = node('div', undefined, 'section-heading'); heading.append(node('h2', section.title)); el.append(heading); }
+      blocks.forEach(block => el.append(renderBlock(block, section.id)));
+    }
+    $('work').append(el);
   }
   for (const [field, title] of [['decisions', 'Decisions'], ['open', 'Open questions'], ['next', 'Next steps']]) {
     if (!content[field]?.length) continue; const section = node('section', undefined, 'work-section'), heading = node('div', undefined, 'section-heading'); heading.append(node('h2', title)); section.append(heading, renderBlock({ id: field, type: 'list', items: content[field] }, 'legacy')); $('work').append(section);
   }
-  if ($('work').children.length > 3) { const sections = node('div'); Array.from($('work').children).forEach(section => sections.append(section)); $('work').append(sections); foldCollection(sections, JSON.stringify(['sections-more', content.sections, content.decisions, content.open, content.next]), 3, 'sections'); }
+  if (!appliedFocus && $('work').children.length > 3) { const sections = node('div'); Array.from($('work').children).forEach(section => sections.append(section)); $('work').append(sections); foldCollection(sections, JSON.stringify(['sections-more', content.sections, content.decisions, content.open, content.next]), 3, 'sections'); }
 }
 function blockText(block) { if (block.type === 'text') return block.text; if (block.type === 'table') return [block.columns.join(' | '), ...block.rows.map(row => row.join(' | '))].join('\n'); return block.items.map(item => typeof item === 'string' ? '• ' + item : block.type === 'reveal' ? item.prompt + '\n' + item.answer : block.type === 'timeline' ? [item.at, item.label, item.detail].filter(Boolean).join(' — ') : (item.checked ? '[x] ' : '[ ] ') + item.text).join('\n'); }
 function authoredText(content) { return [content.title, content.outcome, ...(content.sections || []).map(section => [section.title, ...section.blocks.map(blockText)].filter(Boolean).join('\n')), ...['decisions', 'open', 'next'].filter(field => content[field]?.length).map(field => field + '\n' + content[field].map(item => '• ' + item).join('\n'))].filter(Boolean).join('\n\n'); }
@@ -322,6 +345,8 @@ function render(data) {
   $('empty-work').hidden = !!($('work').childElementCount || content.outcome || content.visual_html); $('copy-work').disabled = $('empty-work').hidden === false;
   if (previousBoundary && previousBoundary !== boundary) { $('activity-panel').open = false; $('history-panel').open = false; window.scrollTo(0, 0); }
 }
+$('adaptive-layout').checked = storageGet('live-canvas-adaptive-layout') !== 'off';
+$('adaptive-layout').onchange = () => { storageSet('live-canvas-adaptive-layout', $('adaptive-layout').checked ? 'on' : 'off'); if (state) renderWork(state, true); };
 $('copy-work').onclick = () => { if (state) copyText(authoredText(state.content), 'Authored work copied'); };
 $('reset-local').onclick = () => { if (state) { resetLocalState(); refreshLocalView(); } $('settings').open = false; announce('Browser-only interactions reset'); };
 $('visual-expand').onclick = () => { const expanded = $('visual').classList.toggle('expanded'); $('visual-expand').textContent = expanded ? 'Reduce' : 'Expand'; };
