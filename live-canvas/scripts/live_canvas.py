@@ -36,14 +36,16 @@ while command_index < len(args):
     else:
         break
 command = args[command_index] if command_index < len(args) else None
-if (client or session) and command not in {"shutdown", "_serve"}:
-    if client not in {"claude", "cursor"} or not session or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
-        raise SystemExit("Use --client claude|cursor and the exact --session-id from SessionStart")
+global_command = command in {"shutdown", "_serve"} or (command == "auto-open" and
+    command_index + 1 < len(args) and args[command_index + 1] in {"on", "off", "status"})
+if (client or session) and not global_command:
+    if client not in {"claude", "cursor", "codex"} or not session or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
+        raise SystemExit("Use --client codex|claude|cursor and the exact --session-id from SessionStart")
     if any(arg == "--thread" or arg.startswith("--thread=") for arg in args):
         raise SystemExit("Do not combine a client session with --thread")
-    if any(arg == "--transcript" or arg.startswith("--transcript=") for arg in args):
+    if client != "codex" and any(arg == "--transcript" or arg.startswith("--transcript=") for arg in args):
         raise SystemExit("Claude/Cursor messages arrive through hooks, not the Codex transcript parser")
-    args.extend(["--thread", client + ":" + session])
+    args.extend(["--thread", session if client == "codex" else client + ":" + session])
 thread = os.environ.get("CODEX_THREAD_ID", "")
 if "--thread" in args:
     index = args.index("--thread")
@@ -52,7 +54,7 @@ if "--thread" in args:
 for arg in args:
     if arg.startswith("--thread="):
         thread = arg.split("=", 1)[1]
-if not client and command == "start" and not any(arg == "--transcript" or arg.startswith("--transcript=") for arg in args) and re.fullmatch(r"[A-Za-z0-9_-]+", thread):
+if client in {None, "codex"} and command == "start" and not any(arg == "--transcript" or arg.startswith("--transcript=") for arg in args) and re.fullmatch(r"[A-Za-z0-9_-]+", thread):
     sessions = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "sessions"
     matches = list(sessions.rglob("*-" + thread + ".jsonl")) if sessions.exists() else []
     if matches:

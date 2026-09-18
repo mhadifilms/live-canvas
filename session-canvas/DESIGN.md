@@ -14,7 +14,7 @@ The Python standard-library server binds to loopback and serves only known capab
 
 One server can host multiple session canvases. Claude Code and Cursor identities include their provider prefix; Codex retains its original task IDs for compatibility. Start enables one canvas, stop disables its automatic ingestion, and shutdown stops the shared server while preserving state. Health checks distinguish unavailable loopback access from a stopped process.
 
-Codex follows only a registered transcript whose metadata matches the selected task. It persists the byte offset and reads visible assistant text and generic lifecycle/tool signals. Claude Code and Cursor use documented command-hook events. These hooks admit visible response text and fixed activity labels, exclude private tool/reasoning bodies, fail open, and never open a browser or start a model follow-up loop.
+Codex follows only a registered transcript whose metadata matches the selected task. It persists the byte offset and reads visible assistant text and generic lifecycle/tool signals. Claude Code and Cursor use documented command-hook events. Activity hooks admit visible response text and fixed labels, exclude private tool/reasoning bodies, and fail open. SessionStart also enables automatic opening for new foreground sessions: Codex/Cursor use a first-user-turn native browser instruction, while Claude Code dispatches a bounded local browser worker. Neither creates a model follow-up loop. Atomic claims suppress concurrent openings; explicit stop and a shared opt-out are respected. Failed attempts release their claim, and interrupted attempts expire after five minutes. A crash after UI dispatch but before acknowledgement can still lead to a repeated opening on retry.
 
 ## Cost and limitations
 

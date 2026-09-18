@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-open, zero-model-call Claude Code and Cursor hook adapters."""
+"""Fail-open, zero-model-call local client hook adapters."""
 import argparse
 import hashlib
 import json
@@ -9,8 +9,10 @@ import shlex
 import sys
 
 import canvas
+import auto_open
 
 EVENTS = {
+    "codex": {"SessionStart": "SessionStart"},
     "claude": {"SessionStart": "SessionStart", "UserPromptSubmit": "UserPromptSubmit",
                "PostToolUse": "PostToolUse", "Stop": "Stop"},
     "cursor": {"sessionStart": "SessionStart", "beforeSubmitPrompt": "UserPromptSubmit",
@@ -19,13 +21,13 @@ EVENTS = {
 
 
 def identity(client, payload, event=None):
-    field = "session_id" if client == "claude" else "conversation_id"
+    field = "conversation_id" if client == "cursor" else "session_id"
     session = payload.get(field)
     if client == "cursor" and event == "sessionStart" and not session:
         session = payload.get("session_id")
     if not isinstance(session, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
         raise ValueError("Missing or invalid client session identity")
-    return session, client + ":" + session
+    return session, session if client == "codex" else client + ":" + session
 
 
 def handle(root, client, event, payload):
@@ -39,13 +41,22 @@ def handle(root, client, event, payload):
     signal = EVENTS[client][event]
     if signal == "SessionStart":
         launcher = Path(__file__).resolve().parents[1] / "live-canvas/scripts/live_canvas.py"
-        prefix = shlex.join([sys.executable, str(launcher), "--client", client, "--session-id", session])
+        prefix = shlex.join([sys.executable, str(launcher), "--home", str(root),
+                             "--client", client, "--session-id", session])
+        opening = ""
+        if auto_open.foreground_start(client, payload):
+            if client == "claude":
+                if auto_open.prepare(root, thread):
+                    auto_open.launch(root, thread)
+                    opening = "A local worker is automatically opening this session's canvas in the OS browser. "
+            else:
+                opening = auto_open.native_instruction(root, thread, prefix, client)
         context = ("Live canvas is available via /live-canvas. Exact session command prefix: " + prefix +
-                   ". Use it when requested or useful for substantial work; do not start/open it for trivial chats. "
+                   ". " + opening + "Respect explicit stop and auto-open off; do not automatically reopen otherwise. "
                    "For an active canvas, use status --summary, then update meaningful changed sections at milestones and before the final reply. "
                    "Hooks record activity and final responses automatically; no polling or follow-up turns are needed.")
         canvas.hook(root, thread, {}, signal)
-        if client == "claude":
+        if client in {"claude", "codex"}:
             return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}}
         return {"additional_context": context,
                 "env": {"LIVE_CANVAS_CLIENT": client, "LIVE_CANVAS_SESSION_ID": session}}

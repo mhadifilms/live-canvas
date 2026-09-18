@@ -11,6 +11,7 @@ class DistributionTests(unittest.TestCase):
             'live-canvas/SKILL.md', 'live-canvas/scripts/live_canvas.py',
             'session-canvas/canvas.py', 'session-canvas/index.html',
             'session-canvas/client_hooks.py', 'session-canvas/install_clients.py',
+            'session-canvas/auto_open.py',
             'session-canvas/README.md', 'session-canvas/DESIGN.md',
         ]
         for relative in required:

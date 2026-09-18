@@ -22,7 +22,7 @@ def entries(client):
     for event in EVENTS[client]:
         command = shlex.join([sys.executable, str(HERE / "client_hooks.py"), "--client", client, "--event", event])
         hook = {"type": "command", "command": command, "timeout": 2}
-        if client == "claude":
+        if client in {"claude", "codex"}:
             result[event] = {"hooks": [hook]}
         else:
             hook["failClosed"] = False
@@ -53,15 +53,19 @@ def commands(value):
 
 
 def plan(user_home, client, uninstall=False):
-    base = user_home / (".claude" if client == "claude" else ".cursor")
+    base = user_home / {"claude": ".claude", "cursor": ".cursor", "codex": ".codex"}[client]
+    if client == "codex" and user_home == Path.home().resolve() and os.environ.get("CODEX_HOME"):
+        base = Path(os.environ["CODEX_HOME"]).expanduser().resolve()
     config_path = base / ("settings.json" if client == "claude" else "hooks.json")
     manifest_path = base / ".live-canvas-install.json"
     skill_path = base / "skills/live-canvas"
     original = load(config_path, {})
     manifest = load(manifest_path, None)
     desired = entries(client)
-    if manifest and (manifest.get("schema") != 1 or manifest.get("client") != client or
-                     manifest.get("source") != str(SKILL) or manifest.get("entries") != desired):
+    owned = manifest.get("entries", {}) if manifest else {}
+    if manifest and (manifest.get("schema") not in {1, 2} or manifest.get("client") != client or
+                     manifest.get("source") != str(SKILL) or not isinstance(owned, dict) or
+                     any(desired.get(event) != entry for event, entry in owned.items())):
         raise ValueError("Installation belongs to a different bundle/interpreter; uninstall using its original installer first: " + str(manifest_path))
     if skill_path.parent.is_symlink():
         raise ValueError("Refusing to modify a symlinked skills directory: " + str(skill_path.parent))
@@ -76,7 +80,7 @@ def plan(user_home, client, uninstall=False):
     for event, definitions in hooks.items():
         for definition in definitions:
             ours = any("client_hooks.py" in command for command in commands(definition))
-            if ours and (not manifest or desired.get(event) != definition):
+            if ours and (not manifest or owned.get(event) != definition):
                 raise ValueError("Unowned or edited live-canvas hook; configuration was preserved: " + event)
         if event in desired and definitions.count(desired[event]) > 1:
             raise ValueError("Duplicate live-canvas hook; resolve manually: " + event)
@@ -84,7 +88,7 @@ def plan(user_home, client, uninstall=False):
     installed = bool(manifest and same_skill and all(hooks.get(event, []).count(entry) == 1 for event, entry in desired.items()))
     if uninstall:
         if manifest:
-            for event, entry in desired.items():
+            for event, entry in owned.items():
                 definitions = updated.get("hooks", {}).get(event, [])
                 if entry in definitions:
                     definitions.remove(entry)
@@ -105,10 +109,13 @@ def plan(user_home, client, uninstall=False):
         if client == "cursor":
             updated["version"] = 1
     if not manifest and not uninstall:
-        manifest = {"schema": 1, "client": client, "source": str(SKILL), "entries": desired,
+        manifest = {"schema": 2, "client": client, "source": str(SKILL), "entries": desired,
                     "config_existed": config_path.exists(), "had_hooks": "hooks" in original,
                     "had_version": "version" in original, "original_events": list(hooks),
                     "created_skill": not same_skill}
+    elif manifest and not uninstall:
+        # Upgrade known older manifests without taking ownership of other hooks.
+        manifest = {**manifest, "schema": 2, "entries": desired}
     return {"client": client, "base": base, "config_path": config_path, "manifest_path": manifest_path,
             "skill_path": skill_path, "original": original, "updated": updated, "manifest": manifest,
             "same_skill": same_skill, "installed": installed, "uninstall": uninstall}
@@ -137,8 +144,11 @@ def apply(item):
     backup_path = backup(path, base) if config_changed else None
     if not item["uninstall"]:
         # Persist ownership before mutation, allowing recovery from interrupted installs.
-        if not item["manifest_path"].exists():
-            canvas.atomic_json(item["manifest_path"], {**manifest, "backup": backup_path})
+        saved_manifest = load(item["manifest_path"], None)
+        updated_manifest = {**manifest, "backup": manifest.get("backup", backup_path)}
+        if saved_manifest != updated_manifest:
+            backup(item["manifest_path"], base)
+            canvas.atomic_json(item["manifest_path"], updated_manifest)
         item["skill_path"].parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if not item["same_skill"]:
             item["skill_path"].symlink_to(SKILL, target_is_directory=True)
@@ -158,11 +168,12 @@ def apply(item):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("dry-run", "check", "install", "uninstall"))
-    parser.add_argument("--client", choices=("claude", "cursor", "both"), default="both")
+    parser.add_argument("--client", choices=("codex", "claude", "cursor", "both", "all"), default="all")
     parser.add_argument("--user-home", type=Path, default=Path.home(), help="Override the user home (also useful for fixtures)")
     args = parser.parse_args(argv)
     try:
-        clients = ["claude", "cursor"] if args.client == "both" else [args.client]
+        clients = ["codex", "claude", "cursor"] if args.client == "all" else (
+            ["claude", "cursor"] if args.client == "both" else [args.client])
         user_home = args.user_home.expanduser().resolve()
         # Preflight every target before changing any of them.
         plans = [plan(user_home, client, args.action == "uninstall") for client in clients]
@@ -170,6 +181,7 @@ def main(argv=None):
             print(json.dumps({"action": args.action, "clients": [
                 {"client": item["client"], "installed": item["installed"], "config": str(item["config_path"]),
                  "skill": str(item["skill_path"]), "source": str(SKILL), "events": list(entries(item["client"])),
+                 "host_requirement": "Enable Codex hooks with: codex features enable hooks" if item["client"] == "codex" else None,
                  "would_change_config": item["original"] != item["updated"]} for item in plans]}, indent=2))
             return int(args.action == "check" and not all(item["installed"] for item in plans))
         results = []

@@ -8,9 +8,9 @@ Python standard library only. No API keys, packages, hosted service, or backgrou
 
 | Client | Automatic observations | Viewer |
 | --- | --- | --- |
-| Codex | Registered local session transcript: visible commentary, final responses, and generic activity | Codex browser panel when available; otherwise a browser |
-| Claude Code | Command hooks: generic activity and the final visible response on `Stop` | A browser |
-| Cursor | Command hooks: generic activity and `afterAgentResponse` text | Built-in browser when exposed by the host; otherwise a browser |
+| Codex | SessionStart instruction plus registered local transcript | Right-hand Codex browser panel on the first user turn |
+| Claude Code | Command hooks: generic activity and the final visible response on `Stop` | OS browser automatically at foreground session startup |
+| Cursor | Command hooks: generic activity and `afterAgentResponse` text | Built-in browser on the first user turn when exposed; otherwise OS browser |
 
 This package targets local macOS and Linux environments with Python 3.9+. Windows is not supported by the runtime's file-locking implementation. Ordinary Claude chat has no native integration. Remote environments need their own installation and access to the loopback viewer.
 
@@ -21,7 +21,7 @@ git clone https://github.com/mhadifilms/live-canvas.git
 cd live-canvas
 ```
 
-For Claude Code and Cursor, preview the changes, install, and verify configuration:
+Preview the changes, install, and verify configuration:
 
 ```sh
 python3 session-canvas/install_clients.py dry-run
@@ -29,11 +29,24 @@ python3 session-canvas/install_clients.py install
 python3 session-canvas/install_clients.py check
 ```
 
-Add `--client claude` or `--client cursor` to target one client. The installer merges user hooks, backs up changed settings, and installs a `live-canvas` skill. It preserves unrelated hooks and existing `canvas` skills, and refuses conflicting files. Cloning this repository alone changes no client configuration.
+The default installs all three clients. Add `--client codex`, `--client claude`, or `--client cursor` to target one (`--client both` retains Claude Code + Cursor compatibility). The installer merges user hooks, backs up changed settings, and installs a `live-canvas` skill. It preserves unrelated hooks and existing `canvas` skills, and refuses conflicting files. Cloning this repository alone changes no client configuration.
 
-Start a new client chat, then ask **“open live canvas”** or invoke `/live-canvas` where supported. Session-start context supplies the correct identity. Hooks do not open a viewer for every chat; a canvas receives updates only after it is started. Keep this checkout in place because the installed hooks and skill reference it. To move an installation, uninstall from the original checkout first.
+For Codex, enable the host's hooks feature if needed with `codex features enable hooks`; the installer preserves `config.toml` and existing guard hooks. Restart the client if necessary, then start a new foreground chat. **The canvas opens automatically:** Claude Code dispatches a local browser worker at startup; Codex and Cursor receive an instruction to open their panel on the first user turn. Clicking a blank new-chat button alone cannot open a native panel through these hooks. Session context supplies the exact identity; no manual lookup or extra model turn is needed.
 
-For Codex, create a skill link from the repository root. This refuses to replace an existing path:
+Resume, clear, compact, and fork events do not trigger automatic opening. Background/subagent/noninteractive sessions are skipped when the payload identifies them; hosts do not always expose those indicators. Per-session claims suppress repeated openings, and explicit `stop` remains stopped. Opening failures are retryable; after an interrupted attempt, a claim expires after five minutes. A crash between opening a UI and acknowledgement can cause a later retry to open it again.
+
+Codex may ask you to review and trust a newly installed hook through its normal approval prompt. The installer does not bypass hook trust.
+
+Keep this checkout in place because the installed hooks and skill reference it. To move an installation, uninstall from the original checkout first. You can still ask **“open live canvas”** or invoke `/live-canvas` for manual use.
+
+Turn automatic opening off or on for all clients using this state directory:
+
+```sh
+python3 session-canvas/canvas.py auto-open off
+python3 session-canvas/canvas.py auto-open on
+```
+
+For skill-only Codex use without automatic opening, create a link from the repository root. This refuses to replace an existing path:
 
 ```sh
 skill_path="${CODEX_HOME:-$HOME/.codex}/skills/live-canvas"
@@ -68,7 +81,7 @@ See the [runtime guide and schema](session-canvas/README.md), [skill instruction
 
 ## Uninstall and development
 
-Remove the Claude Code/Cursor integration with:
+Remove the installed client integrations with:
 
 ```sh
 python3 session-canvas/install_clients.py uninstall

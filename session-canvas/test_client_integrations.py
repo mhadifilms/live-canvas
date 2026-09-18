@@ -32,14 +32,14 @@ class ClientHooksTests(unittest.TestCase):
 
     def test_session_start_injects_identity_without_creating_state(self):
         claude = client_hooks.handle(self.root, "claude", "SessionStart", {"session_id": "same-id"})
-        cursor = client_hooks.handle(self.root, "cursor", "sessionStart", {"conversation_id": "same-id", "session_id": "wrong-id"})
+        cursor = client_hooks.handle(self.root, "cursor", "sessionStart", {"conversation_id": "same-id", "session_id": "wrong-id", "source": "resume"})
         self.assertIn("--client claude --session-id same-id", claude["hookSpecificOutput"]["additionalContext"])
         self.assertIn("--client cursor --session-id same-id", cursor["additional_context"])
         self.assertEqual(cursor["env"]["LIVE_CANVAS_SESSION_ID"], "same-id")
         self.assertFalse(self.root.exists())
 
     def test_cursor_session_start_accepts_documented_session_id_fallback(self):
-        result = client_hooks.handle(self.root, "cursor", "sessionStart", {"session_id": "same-id"})
+        result = client_hooks.handle(self.root, "cursor", "sessionStart", {"session_id": "same-id", "source": "resume"})
         self.assertEqual(result["env"]["LIVE_CANVAS_SESSION_ID"], "same-id")
         self.assertIn("--session-id same-id", result["additional_context"])
         self.assertFalse(self.root.exists())

@@ -645,12 +645,17 @@ def main():
         if name == "start":
             child.add_argument("--title")
             child.add_argument("--transcript", help="Exact session JSONL path; session identity must match")
+            child.add_argument("--auto-claim", help=argparse.SUPPRESS)
         if name == "status":
             child.add_argument("--summary", action="store_true", help="Return a bounded content digest")
         if name == "hook":
             child.add_argument("--event")
     sub.add_parser("shutdown", help="Stop the shared server; preserve all task data")
     sub.add_parser("_serve", help=argparse.SUPPRESS)
+    opening = sub.add_parser("auto-open", help="Toggle automatic opening or acknowledge a client UI open")
+    opening.add_argument("action", choices=("on", "off", "status", "claim", "opened", "release"))
+    opening.add_argument("--thread")
+    opening.add_argument("--claim")
     args = parser.parse_args()
     root = Path(args.home).expanduser().resolve() if args.home else home()
     try:
@@ -662,6 +667,18 @@ def main():
             if info:
                 os.kill(info["pid"], signal.SIGTERM)
             print(json.dumps({"shutdown_requested": bool(info)}))
+            return 0
+        if args.command == "auto-open":
+            import auto_open
+            if args.action in {"on", "off", "status"}:
+                print(json.dumps(auto_open.preference(root, {"on": True, "off": False}.get(args.action))))
+                return 0
+            thread = args.thread or os.environ.get("CODEX_THREAD_ID")
+            if not thread:
+                raise ValueError("Task identity required for an opening claim")
+            result = auto_open.claim(root, thread) if args.action == "claim" else auto_open.settle(
+                root, thread, args.claim, opened=args.action == "opened")
+            print(json.dumps(result))
             return 0
         data = read_input(args.file) if args.command in {"hook", "feed", "update"} else {}
         thread = args.thread or os.environ.get("CODEX_THREAD_ID")
@@ -683,6 +700,12 @@ def main():
         elif args.command in {"start", "stop"}:
             transcript = validate_transcript(args.transcript, thread) if args.command == "start" and args.transcript else None
             def enable(state):
+                if args.command == "start" and args.auto_claim:
+                    import auto_open
+                    lease = state.get("auto_open", {}).get("claim", {})
+                    if (not state.get("enabled") or not auto_open.enabled(root) or
+                        lease.get("token") != args.auto_claim or lease.get("expires", 0) <= time.time()):
+                        raise ValueError("Automatic opening was stopped, disabled, or its claim expired")
                 state["enabled"] = args.command == "start"
                 if transcript and state.get("transcript", {}).get("path") != str(transcript):
                     state["transcript"] = {"path": str(transcript), "offset": 0, "error": None}

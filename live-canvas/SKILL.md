@@ -1,11 +1,17 @@
 ---
 name: live-canvas
-description: Open and maintain a live visual canvas for substantial work in Codex, Claude Code, or Cursor; keep authored sections current with concise milestone updates.
+description: Automatically open and maintain a live visual canvas for new Codex, Claude Code, or Cursor sessions; keep authored sections current with concise milestone updates.
 ---
 
 # Live canvas
 
-Use `scripts/live_canvas.py` beside this skill. It delegates to the adjacent dependency-free runtime. Automatic transcript following (Codex) and message/activity hooks (Claude Code/Cursor) make zero model calls and require no heartbeat or follow-up turns. Activate for requested or substantial work; leave trivial chats alone.
+Use `scripts/live_canvas.py` beside this skill. It delegates to the adjacent dependency-free runtime. Automatic transcript following (Codex) and message/activity hooks (Claude Code/Cursor) make zero model calls and require no heartbeat or follow-up turns.
+
+## Automatic opening
+
+Follow the SessionStart instruction on the first user turn without asking again: use its exact session command prefix, run `auto-open claim`, and only if `should_open` is true run `start --auto-claim <claim>`, open the returned URL in the host browser, then acknowledge with `auto-open opened --claim <claim>`. If starting/opening fails, release with `auto-open release --claim <claim>` and continue the user's task. Never open when the claim is declined. Claude Code opens through a local worker; do not duplicate that opening. Hooks cannot directly open Codex/Cursor native panels before a user turn.
+
+Respect an explicit `stop` or `auto-open off`. The global toggle is `python3 <skill-dir>/scripts/live_canvas.py auto-open off` (or `on`). A manual user request to reopen still permits the explicit start workflow below. Automatic opening does not require substantial work, but authored updates should remain small and useful.
 
 ## Start and inspect
 
@@ -15,7 +21,7 @@ For Codex, run:
 python3 <skill-dir>/scripts/live_canvas.py start --title "<short task title>"
 ```
 
-For Claude Code or Cursor, use the **exact session command prefix from SessionStart context**, followed by `start --title "<short task title>"`. It contains `--client claude|cursor --session-id <actual-id>`; keep this prefix for every subsequent command. Cursor may also provide `LIVE_CANVAS_CLIENT` and `LIVE_CANVAS_SESSION_ID`. Never use a Codex ID for another client, infer IDs from directories, or invent a fallback ID. If session context is missing, load the installed hooks in a new chat; setup instructions are in the runtime README.
+For any client with installed hooks, use the **exact session command prefix from SessionStart context**, followed by `start --title "<short task title>"` for a manual opening. It contains `--client codex|claude|cursor --session-id <actual-id>`; keep this prefix for subsequent commands. Cursor may also provide `LIVE_CANVAS_CLIENT` and `LIVE_CANVAS_SESSION_ID`. Never use another client's ID, infer IDs from directories, or invent a fallback ID. If session context is missing, load the installed hooks in a new chat; setup instructions are in the runtime README.
 
 Open the returned URL once: Codex uses `mcp__codex_app__open_in_codex` with `{type:"browser",url:<url>}` and placement `"right"`; Cursor uses its built-in browser when exposed by the host. Otherwise open the URL in the user's browser (macOS `open`, Linux `xdg-open`). Claude Code uses this browser fallback; ordinary Claude chat has no supported native panel integration. Reuse the viewer afterward. `status` returns metadata, URL, and `state_file`; `stop` disables this session. Do not use `shutdown` unless the shared service should stop.
 

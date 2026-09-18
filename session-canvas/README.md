@@ -2,9 +2,9 @@
 
 A live, local side panel for Codex, Claude Code, and Cursor sessions. Python 3.9+ standard library only; no packages, build step, remote services, or Herdr dependency. The browser reads state once per second using conditional requests; Codex transcript updates are followed every 0.8 seconds. Hidden browser tabs poll every five seconds.
 
-## Install for Claude Code and Cursor
+## Install and automatically open new chats
 
-From this directory, preview the exact configuration paths and then install:
+From this directory:
 
 ```sh
 python3 install_clients.py dry-run
@@ -12,32 +12,45 @@ python3 install_clients.py install
 python3 install_clients.py check
 ```
 
-Default scope is both clients; add `--client claude` or `--client cursor` for one. The installer adds `live-canvas` at `~/.claude/skills/live-canvas` and `~/.cursor/skills/live-canvas`, linking to this bundle. Keep the bundle in place. It merges command hooks into `~/.claude/settings.json` and `~/.cursor/hooks.json` (version 1). It never changes an existing `canvas` skill. Other settings and hooks are preserved; collisions, modified owned hooks, symlinked config files, and unsupported schema versions are refused before changes. `dry-run` and `check` are read-only; `check` exits 1 when missing or incomplete.
+The default installs Codex, Claude Code, and Cursor. Select one with `--client codex|claude|cursor`; `--client both` retains the earlier Claude Code + Cursor selection. Skill links are named `live-canvas`; existing `canvas` skills are never modified. The installer merges `~/.codex/hooks.json`, `~/.claude/settings.json`, and version-1 `~/.cursor/hooks.json`, preserving unrelated hooks and settings. Codex uses `CODEX_HOME` when set for the real user home. Its hooks feature must be enabled separately: `codex features enable hooks`. The installer never edits `config.toml`.
 
-Changed configuration bytes are backed up privately under each client's `.live-canvas-backups/`; ownership is tracked in `.live-canvas-install.json`. Repeated installation is idempotent. To remove this integration while preserving later unrelated edits:
+Start a new foreground chat after installation; restart the host if it caches hooks. Automatic opening is on by default:
+
+- **Codex:** SessionStart supplies the exact session prefix and a short instruction to open the right-hand browser panel on the first user turn. The hook cannot directly open the native panel on a blank-chat click.
+- **Cursor:** the first user turn opens the built-in browser when exposed by the host, otherwise the OS browser.
+- **Claude Code:** a detached local worker starts the shared server and dispatches the OS browser at startup, without a model call. macOS uses `open`; Linux requires a graphical session and `xdg-open`.
+
+Only `source: startup` triggers Codex/Claude automatic opening. Cursor sessionStart accepts absent source as startup. Resume, clear, compact, and fork never trigger opening. Cursor's documented `is_background_agent`, plus explicit background/subagent/noninteractive indicators supplied by other hosts, suppress opening. Absence of those indicators is not proof that a host is interactive. A main custom `agent_type` is not treated as a subagent.
+
+Session identities are exact: Codex retains its raw task ID; Claude uses `claude:<session_id>`; Cursor uses `cursor:<conversation_id>` (sessionStart can fall back to `session_id`). No IDs are inferred from a working directory. SessionStart injects the command prefix, and Cursor also supplies environment values when the host supports them.
+
+Disable or re-enable automatic opening for the shared state directory:
+
+```sh
+python3 canvas.py auto-open off
+python3 canvas.py auto-open on
+python3 canvas.py auto-open status
+```
+
+The off switch affects automatic opening; explicit manual `start` still works. `stop --thread <exact-key>` disables a session, and startup hooks do not re-enable it. Claims serialize automatic opening attempts across repeated hooks and concurrent turns. Native opening follows `auto-open claim`, `start --auto-claim <claim>`, browser tool success, then `auto-open opened --claim <claim>`. Failed attempts use `auto-open release --claim <claim>`; interrupted claims expire after five minutes. A crash between UI opening and acknowledgement can result in a repeated opening on retry. OS dispatch success is not proof that a browser rendered the page.
+
+The hooks do not retry themselves or create follow-up model turns. A failed opening can be retried on a later startup or manually; errors release the claim when possible. The Claude worker bounds shared-server startup to ten seconds and OS dispatch to three seconds, outside the two-second hook process. Automatic observations still make zero model calls. Useful authored sections require concise updates at milestones and before the assistant's final reply.
+
+Claude hooks record generic activity and `Stop.last_assistant_message`; Cursor records generic activity and `afterAgentResponse.text`. Responses arrive at message boundaries rather than token streaming. These adapters never read prompts, tool inputs/results, thoughts, or transcripts. Codex registers its transcript through the launcher as before. Stopped sessions ignore observations. Malformed input and state contention fail open.
+
+### Reversible configuration
+
+Keep this checkout in place because hook commands and skill links reference it. Changed files are backed up privately in each client's `.live-canvas-backups/`, with ownership recorded in `.live-canvas-install.json`. Known schema-1 manifests upgrade in place, preserving previous backup and skill-link ownership. Unowned or edited hooks, incompatible manifests, conflicting skills, symlinked configs, and unsupported versions are refused. To move the bundle or change interpreters, uninstall using the original installer first.
 
 ```sh
 python3 install_clients.py uninstall
 ```
 
-Uninstall removes only unchanged owned entries and the skill link it created. It keeps backups and canvas state; it does not restore a whole old settings file over newer edits. If an owned hook was edited, review that change and restore the exact owned entry (or remove it) before retrying. `--user-home /temporary/directory` exercises the same installer against fixture configs. Multi-client installation preflights both targets but is not a filesystem-wide transaction: an I/O failure during mutation may leave one installed; rerun `check` and use `uninstall` or retry to recover.
+Uninstall removes only unchanged owned hook entries and links it created, preserving later unrelated edits, earlier skill links, backups, and canvas data. It does not replace current settings with an old backup. `dry-run` and `check` are read-only; check validates installation files, not host hook loading or the Codex feature flag. `--user-home /temporary/directory` targets fixture configurations. All clients are preflighted before writes, but multiple files are not one filesystem transaction; interrupted installs can be inspected with check and retried or uninstalled.
 
-Start a **new client chat after installation**, or restart the host if its hooks/skill cache requires it. Ask “open live canvas” or invoke `/live-canvas` where supported. SessionStart supplies the exact command prefix and session identity; no manual ID lookup is needed. The skill opens the same viewer in Cursor's built-in browser when the host exposes one, otherwise in a normal browser. Claude Code uses a normal browser; there is no native panel integration for ordinary Claude chat. Claude environments without access to this local filesystem and loopback server cannot use the local installation.
+Keep `SESSION_CANVAS_HOME` consistent between hook processes and manual commands. SessionStart's injected prefix includes the actual state directory. Ordinary Claude chat has no native panel integration, and remote environments need access to their own local filesystem and loopback viewer.
 
-For explicit commands, use the prefix from the actual SessionStart context:
-
-```sh
-python3 ../live-canvas/scripts/live_canvas.py --client claude --session-id ACTUAL_SESSION_ID start --title "Current work"
-python3 ../live-canvas/scripts/live_canvas.py --client cursor --session-id ACTUAL_CONVERSATION_ID status --summary
-```
-
-Retain `--client` and `--session-id` for every `update`, `status`, or `stop`. Cursor SessionStart also injects `LIVE_CANVAS_CLIENT`/`LIVE_CANVAS_SESSION_ID` when the host honors environment output. Explicit identities work even if `CODEX_THREAD_ID` is inherited. State keys are `claude:<session_id>` and `cursor:<conversation_id>`; existing Codex task keys remain compatible. Cursor's SessionStart-only `session_id` is accepted as a fallback when common `conversation_id` is absent. Never guess an ID from a working directory or use another client's ID.
-
-Only explicitly started canvases receive data. SessionStart adds brief context and optionally signals an already-active canvas; it never starts a server or opens a browser. Claude hooks record generic SessionStart/UserPromptSubmit/PostToolUse/Stop signals and `Stop.last_assistant_message`. Cursor hooks record generic sessionStart/beforeSubmitPrompt/postToolUse/stop signals and `afterAgentResponse.text`. Visible response delivery occurs at these message boundaries, not token streaming. Prompt content, tool arguments/results, thought events, and transcripts are not read by these adapters. Duplicate completed messages are deduplicated (Claude identical response text is retained once; Cursor distinguishes generation IDs). Malformed/oversized input and busy state fail open; hooks never block, request follow-up turns, or call a model. A missed event is not replayed automatically.
-
-Authored sections still require concise model-written updates at meaningful milestones and before the final reply. Automatic events do not infer an outline, plan, progress percentage, or semantic adaptation. This avoids a background model loop and repeated history loads. A hook update does not start a stopped shared server; explicitly run `start` to resume it. Keep `SESSION_CANVAS_HOME` consistent between the host's hook environment and manual commands if overriding the default state directory.
-
-Payload/config references: [Claude Code hooks](https://code.claude.com/docs/en/hooks), [Claude Code skills](https://code.claude.com/docs/en/skills), [Cursor hooks](https://cursor.com/docs/hooks), [Cursor skills](https://cursor.com/docs/skills). Hook availability and browser tools depend on the installed host version and local policy; fixture tests do not prove that a host has loaded its hooks.
+References: [Codex hooks](https://developers.openai.com/es-419/docs/hooks), [Claude Code hooks](https://code.claude.com/docs/en/hooks), [Claude Code skills](https://code.claude.com/docs/en/skills), [Cursor hooks](https://cursor.com/docs/hooks), [Cursor skills](https://cursor.com/docs/skills).
 
 ## Open a canvas
 
