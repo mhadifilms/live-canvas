@@ -787,6 +787,9 @@ def main():
             child.add_argument("--event")
     sub.add_parser("shutdown", help="Stop the shared server; preserve all task data")
     sub.add_parser("_serve", help=argparse.SUPPRESS)
+    import setup
+    configuring = sub.add_parser("configure", help="Guided private settings, API key and daily limits")
+    setup.add_options(configuring)
     adaptive = sub.add_parser("adaptive", help="Configure optional TypeSafe presentation (no inference from this command)")
     adaptive.add_argument("action", choices=("on", "off", "status", "retry"))
     opening = sub.add_parser("auto-open", help="Toggle automatic opening or acknowledge a client UI open")
@@ -796,6 +799,8 @@ def main():
     args = parser.parse_args()
     root = Path(args.home).expanduser().resolve() if args.home else home()
     try:
+        if args.command == "configure":
+            return setup.execute(args, root)
         if args.command == "_serve":
             serve(root)
             return 0

@@ -23,17 +23,54 @@ git clone https://github.com/mhadifilms/live-canvas.git
 cd live-canvas
 ```
 
-Preview the changes, install, and verify configuration:
+Run the guided setup in a terminal:
 
 ```sh
-python3 session-canvas/install_clients.py dry-run
-python3 session-canvas/install_clients.py install
-python3 session-canvas/install_clients.py check
+python3 session-canvas/setup.py
 ```
 
-The default installs all three clients. Add `--client codex`, `--client claude`, or `--client cursor` to target one (`--client both` retains Claude Code + Cursor compatibility). The installer merges user hooks, backs up changed settings, and installs a `live-canvas` skill. It preserves unrelated hooks and existing `canvas` skills, and refuses conflicting files. Cloning this repository alone changes no client configuration.
+Choose **Codex, Cursor, Claude Code, or a combination**. Setup asks whether to open canvases automatically, whether to use optional TypeSafe focus, and your daily limits. Local-only mode needs no account or key. For TypeSafe, sign in or create an account, then get an API key from the [TypeSafe dashboard](https://console.typesafe.ai/settings/keys), then paste the key into the hidden terminal prompt. Setup explains the remote data sharing before enabling it.
 
-For Codex, enable the host's hooks feature if needed with `codex features enable hooks`; the installer preserves `config.toml` and existing guard hooks. Restart the client if necessary, then start a new foreground chat. **The canvas opens automatically:** Claude Code dispatches a local browser worker at startup; Codex and Cursor receive an instruction to open their panel on the first user turn. Clicking a blank new-chat button alone cannot open a native panel through these hooks. Session context supplies the exact identity; no manual lookup or extra model turn is needed.
+The key is stored in a private local configuration file with owner-only permissions. It is plaintext on disk, not encrypted or stored in an OS keychain. It never appears in the browser, task content, or status output. An existing `TYPESAFE_API_KEY` environment variable takes precedence; setup reports that source without revealing the key. Keep the checkout in place because hooks reference it.
+
+**Finish the selected host's setup:**
+
+| Client | Required next step |
+| --- | --- |
+| Codex | Run `codex features enable hooks` if needed. In Codex CLI, open `/hooks` and trust only the Live Canvas **SessionStart** entry containing `session-canvas/client_hooks.py`. Start a new desktop chat and send a message. |
+| Cursor | Restart Cursor if necessary. Check the **Hooks** tab / Hooks output channel, then send a message in a new Agent conversation. |
+| Claude Code | Restart Claude Code if necessary, review the installed hooks with `/hooks`, then begin a new foreground session. The canvas opens in your OS browser. |
+
+Codex and Cursor receive an instruction to open their panel on the first user turn; clicking a blank new-chat button alone cannot open a native panel. Setup does not bypass host trust or claim a hook executed merely because its files are installed. Ordinary Claude chat and cloud agents are not supported by this local installation.
+
+Change configuration later or inspect it without making API calls:
+
+```sh
+python3 session-canvas/setup.py configure
+python3 session-canvas/setup.py status
+python3 session-canvas/setup.py configure --daily-calls 2500
+python3 session-canvas/setup.py configure --typesafe off --remove-key
+```
+
+The daily input allowance scales with the selected request cap unless explicitly set. Changes preserve today's recorded usage. The running service picks up saved settings; changing its inherited environment still requires a restart.
+
+For scripted installation, make every first-run choice explicit:
+
+```sh
+python3 session-canvas/setup.py --non-interactive --client codex --client cursor --auto-open on --typesafe off
+```
+
+To supply a TypeSafe key in automation, use `--api-key-stdin` with a secret manager or private pipe. Never place a key in command arguments. See the [configuration guide](session-canvas/README.md#guided-setup-and-configuration) for details.
+
+The existing low-level installer remains available for preview, installation, checks, and removal. Pass a client explicitly; its legacy default is all three:
+
+```sh
+python3 session-canvas/install_clients.py dry-run --client codex
+python3 session-canvas/install_clients.py install --client codex
+python3 session-canvas/install_clients.py check --client codex
+```
+
+It merges user hooks, backs up changed settings, preserves unrelated hooks and existing skills, and refuses conflicts. Cloning alone changes no client configuration.
 
 Resume, clear, compact, and fork events do not trigger automatic opening. Background/subagent/noninteractive sessions are skipped when the payload identifies them; hosts do not always expose those indicators. Per-session claims suppress repeated openings, and explicit `stop` remains stopped. Opening failures are retryable; after an interrupted attempt, a claim expires after five minutes. A crash between opening a UI and acknowledgement can cause a later retry to open it again.
 
@@ -109,11 +146,11 @@ Readable routes stay fixed after their first opening, even when the title change
 TypeSafe can choose which existing section to put first and collapse the others. It never generates content or changes authored history. This feature sends bounded authored task context and section excerpts to TypeSafe, so it is off until explicitly enabled:
 
 ```sh
-# Supply TYPESAFE_API_KEY to the environment that starts the local server.
-python3 session-canvas/canvas.py adaptive on
+# Configure the key and consent through the terminal wizard.
+python3 session-canvas/setup.py configure
 python3 session-canvas/canvas.py adaptive status
 # Disable remote selection and return to the authored layout:
 python3 session-canvas/canvas.py adaptive off
 ```
 
-The preference survives restarts; the key is never written to canvas files or sent to the browser. Restart an already-running server after adding its key to the environment. Defaults are 10,000 calls and 60,000,000 encoded input bytes per UTC day, shared across tasks. No calls happen on browser refresh or automatic activity. Missing keys, failures, uncertain results, and exhausted budgets retain the authored layout. `adaptive retry` requests a bounded retry after a transient failure; it cannot reset the budget. In Settings, **Follow suggested focus** controls this browser's layout only, while `adaptive off` controls remote inference. See [configuration and limitations](session-canvas/README.md#optional-typesafe-presentation).
+The preference survives restarts. Guided setup can save a private local key; an environment key takes precedence and requires a server restart when changed. Keys never enter canvas content or browser responses. Defaults are 10,000 calls and 60,000,000 encoded input bytes per UTC day, shared across tasks. No calls happen on browser refresh or automatic activity. Missing keys, failures, uncertain results, and exhausted budgets retain the authored layout. `adaptive retry` requests a bounded retry after a transient failure; it cannot reset the budget. In Settings, **Follow suggested focus** controls this browser's layout only, while `adaptive off` controls remote inference. See [configuration and limitations](session-canvas/README.md#optional-typesafe-presentation).

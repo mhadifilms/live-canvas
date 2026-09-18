@@ -143,7 +143,7 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(canvas.read_json(self.root / "typesafe-budget.json")["calls"], 2)
 
     def test_off_clears_focus_and_rechecks_permission_at_commit(self):
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"TYPESAFE_API_KEY": "fixture-secret-key"}, clear=True):
             adaptive.preference(self.root, "on")
             adaptive.process(self.root, self.state(), self.settings, request=self.answer)
             adaptive.preference(self.root, "off")
@@ -158,7 +158,7 @@ class PresentationTests(unittest.TestCase):
             self.assertNotIn("presentation", self.state())
 
     def test_off_between_process_and_locked_commit_cannot_restore_focus(self):
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"TYPESAFE_API_KEY": "fixture-secret-key"}, clear=True):
             adaptive.preference(self.root, "on")
             adaptive.process(self.root, self.state(), self.settings, request=self.answer)
             self.assertEqual(self.state()["presentation"]["status"], "focused")
@@ -178,7 +178,7 @@ class PresentationTests(unittest.TestCase):
 
     def test_preference_is_opt_in_preserves_other_settings_and_status_never_infers(self):
         canvas.atomic_json(self.root / "preferences.json", {"auto_open": False})
-        with patch.dict("os.environ", {}, clear=True), patch.object(adaptive, "evaluate", side_effect=AssertionError("No network")):
+        with patch.dict("os.environ", {"TYPESAFE_API_KEY": "fixture-secret-key"}, clear=True), patch.object(adaptive, "evaluate", side_effect=AssertionError("No network")):
             self.assertFalse(adaptive.preference(self.root)["enabled"])
             self.assertTrue(adaptive.preference(self.root, "on")["enabled"])
             self.assertFalse(canvas.read_json(self.root / "preferences.json")["auto_open"])

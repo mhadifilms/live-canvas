@@ -36,7 +36,7 @@ while command_index < len(args):
     else:
         break
 command = args[command_index] if command_index < len(args) else None
-global_command = command in {"shutdown", "_serve", "adaptive"} or (command == "auto-open" and
+global_command = command in {"shutdown", "_serve", "adaptive", "configure"} or (command == "auto-open" and
     command_index + 1 < len(args) and args[command_index + 1] in {"on", "off", "status"})
 if (client or session) and not global_command:
     if client not in {"claude", "cursor", "codex"} or not session or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):

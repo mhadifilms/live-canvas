@@ -16,6 +16,7 @@
 *.key
 credentials.json
 secrets.json
+**/configuration/settings.json
 
 # Python and editor output
 __pycache__/

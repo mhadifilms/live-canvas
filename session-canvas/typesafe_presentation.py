@@ -18,19 +18,21 @@ DEBOUNCE_SECONDS = 3
 
 
 def config(environ=None, root=None):
-    env = os.environ if environ is None else environ
     import canvas
-    preferences = canvas.read_json(root / "preferences.json", {}) if root is not None else {}
-    def limit(name, default, maximum):
-        try:
-            return min(maximum, max(0, int(env.get(name, default))))
-        except ValueError:
-            return default
-    return {"enabled": (env["LIVE_CANVAS_TYPESAFE"] == "1") if "LIVE_CANVAS_TYPESAFE" in env else preferences.get("typesafe", False) is True,
-            "retry": preferences.get("typesafe_retry", 0),
-            "key": env.get("TYPESAFE_API_KEY", ""),
-            "daily_calls": limit("LIVE_CANVAS_TYPESAFE_DAILY_CALLS", 10000, 10000),
-            "daily_bytes": limit("LIVE_CANVAS_TYPESAFE_DAILY_BYTES", 60000000, 60000000)}
+    import configuration
+    return configuration.effective(root if root is not None else canvas.home(), environ)
+
+
+def configuration_identity(settings):
+    # Never persist or print this tuple: the credential belongs only in memory.
+    return tuple(settings.get(name) for name in ("enabled", "key", "daily_calls", "daily_bytes", "retry", "revision"))
+
+
+def still_current(root, settings):
+    try:
+        return configuration_identity(config(root=root)) == configuration_identity(settings)
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def encoded(value):
@@ -148,7 +150,7 @@ def reserve(root, fingerprint, byte_count, settings, day):
         if cached:
             pending = cached.get("status") == "pending"
             fresh_pending = pending and time.time() - cached.get("reserved_at", 0) < 30
-            if cached.get("status") in {"focused", "unchanged", "uncertain"} or fresh_pending or (not pending and cached.get("day") == day):
+            if cached.get("status") in {"focused", "unchanged", "uncertain"} or fresh_pending or (not pending and cached.get("day") == day and cached.get("configuration_revision", 0) == settings.get("revision", 0)):
                 return cached, False
         if ledger["calls"] >= settings["daily_calls"] or ledger["input_bytes"] + byte_count > settings["daily_bytes"]:
             return {"status": "budget-exhausted", "day": day}, False
@@ -162,12 +164,12 @@ def reserve(root, fingerprint, byte_count, settings, day):
     return None, True
 
 
-def cache_result(root, fingerprint, result, day):
+def cache_result(root, fingerprint, result, day, revision=0):
     import canvas
     with canvas.locked(root / ".typesafe-budget.lock"):
         path = root / "typesafe-budget.json"
         ledger = canvas.read_json(path, {})
-        ledger.setdefault("cache", {})[fingerprint] = {**result, "day": day}
+        ledger.setdefault("cache", {})[fingerprint] = {**result, "day": day, "configuration_revision": revision}
         canvas.atomic_json(path, ledger)
 
 
@@ -178,6 +180,7 @@ def apply_result(root, snapshot, fingerprint, result, is_enabled=lambda: True):
             return False
         presentation = {**result, "input_hash": fingerprint, "policy": POLICY}
         presentation.pop("day", None)
+        presentation.pop("configuration_revision", None)
         if presentation.get("focus_id") not in {section["id"] for section in state["content"].get("sections", [])}:
             presentation.pop("focus_id", None)
             if presentation["status"] == "focused":
@@ -189,7 +192,7 @@ def apply_result(root, snapshot, fingerprint, result, is_enabled=lambda: True):
 
 
 def process(root, snapshot, settings, request=evaluate, day=None, is_enabled=lambda: True):
-    if not settings["enabled"] or not snapshot.get("enabled"):
+    if not settings["enabled"] or not snapshot.get("enabled") or not is_enabled():
         return
     fingerprint = source_hash(snapshot)
     if not settings["key"]:
@@ -207,13 +210,18 @@ def process(root, snapshot, settings, request=evaluate, day=None, is_enabled=lam
             result = decision(request(body, settings["key"]), mapping)
         except Exception:
             result = {"status": "unavailable"}  # Never persist exceptions, response bodies, or secrets.
-        cache_result(root, fingerprint, result, day)
+        if not is_enabled():
+            return  # Reservation stays charged; discard a revoked or rotated request.
+        cache_result(root, fingerprint, result, day, settings.get("revision", 0))
     return apply_result(root, snapshot, fingerprint, result, is_enabled)
 
 
 def preference(root, action="status"):
     import canvas
-    if action in {"on", "off", "retry"}:
+    import configuration
+    if action in {"on", "off"}:
+        configuration.update(root, {"typesafe": action == "on"})
+    if action == "retry":
         with canvas.locked(root / ".preferences.lock"):
             preferences = canvas.read_json(root / "preferences.json", {})
             if action == "retry":
@@ -243,6 +251,7 @@ def preference(root, action="status"):
             outcomes[outcome] = outcomes.get(outcome, 0) + 1
     return {"enabled": settings["enabled"], "environment_override": "LIVE_CANVAS_TYPESAFE" in os.environ,
             "key_present_in_this_process": bool(settings["key"]),
+            "key_source": settings["key_source"],
             "server": canvas.read_json(root / "typesafe-runtime.json"),
             "budget": {"day": utc_day(), "calls": ledger.get("calls", 0) if current_day else 0,
                        "input_bytes": ledger.get("input_bytes", 0) if current_day else 0,
@@ -254,13 +263,16 @@ def run(root, stopped):
     import canvas
     observed, prior_configuration = {}, None
     while not stopped.is_set():
-        settings = config(root=root)
-        configuration = (settings["enabled"], bool(settings["key"]), settings["retry"])
-        if configuration != prior_configuration:
+        try:
+            settings = config(root=root)
+        except (OSError, ValueError, TypeError):
+            settings = {"enabled": False, "key": "", "configuration_error": True}
+        identity = configuration_identity(settings)
+        if identity != prior_configuration:
             observed.clear()
-            prior_configuration = configuration
+            prior_configuration = identity
             canvas.atomic_json(root / "typesafe-runtime.json", {"enabled": settings["enabled"],
-                "key_present": bool(settings["key"]), "observed_at": canvas.now()})
+                "key_present": bool(settings["key"]), "configuration_error": settings.get("configuration_error", False), "observed_at": canvas.now()})
             if not settings["enabled"]:
                 for path in (root / "tasks").glob("*/state.json"):
                     state = canvas.read_json(path, {})
@@ -283,7 +295,7 @@ def run(root, stopped):
                 if not previous or previous[0] != fingerprint:
                     observed[identity] = (fingerprint, time.monotonic(), False)
                 elif time.monotonic() - previous[1] >= DEBOUNCE_SECONDS and not previous[2]:
-                    completed = process(root, snapshot, settings, is_enabled=lambda: config(root=root)["enabled"])
+                    completed = process(root, snapshot, settings, is_enabled=lambda: still_current(root, settings) and settings["enabled"])
                     observed[identity] = (fingerprint, previous[1], bool(completed))
             except Exception:
                 pass  # One unreadable task must not interrupt other tasks.

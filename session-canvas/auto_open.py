@@ -14,15 +14,17 @@ CLAIM_SECONDS = 300
 
 
 def enabled(root):
-    return canvas.read_json(root / "preferences.json", {}).get("auto_open", True) is not False
+    import configuration
+    try:
+        return configuration.effective(root)["auto_open"]
+    except (OSError, ValueError, TypeError):
+        return False  # Invalid configuration must not break a host or open unexpectedly.
 
 
 def preference(root, value=None):
     if value is not None:
-        with canvas.locked(root / ".preferences.lock"):
-            settings = canvas.read_json(root / "preferences.json", {})
-            settings["auto_open"] = value
-            canvas.atomic_json(root / "preferences.json", settings)
+        import configuration
+        configuration.update(root, {"auto_open": value})
     return {"auto_open": enabled(root)}
 
 
