@@ -29,8 +29,8 @@ def config(environ=None, root=None):
     return {"enabled": (env["LIVE_CANVAS_TYPESAFE"] == "1") if "LIVE_CANVAS_TYPESAFE" in env else preferences.get("typesafe", False) is True,
             "retry": preferences.get("typesafe_retry", 0),
             "key": env.get("TYPESAFE_API_KEY", ""),
-            "daily_calls": limit("LIVE_CANVAS_TYPESAFE_DAILY_CALLS", 12, 100),
-            "daily_bytes": limit("LIVE_CANVAS_TYPESAFE_DAILY_BYTES", 48000, 600000)}
+            "daily_calls": limit("LIVE_CANVAS_TYPESAFE_DAILY_CALLS", 10000, 10000),
+            "daily_bytes": limit("LIVE_CANVAS_TYPESAFE_DAILY_BYTES", 60000000, 60000000)}
 
 
 def encoded(value):
