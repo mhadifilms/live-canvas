@@ -1,14 +1,14 @@
 {
   "context": {
     "id": "example-study",
-    "label": "Studying",
-    "description": "Illustrative example only; not a record of actual work or verified progress."
+    "label": "Recall practice",
+    "description": "Try an answer aloud, then reveal it. Your practice marks stay in this browser."
   },
-  "title": "Photosynthesis retrieval practice",
+  "title": "How photosynthesis works",
   "sections": [
     {
       "id": "recall",
-      "title": "Try before revealing",
+      "title": "Test your understanding",
       "blocks": [
         {
           "id": "cards",
@@ -23,6 +23,11 @@
               "id": "role",
               "prompt": "What does chlorophyll do?",
               "answer": "It absorbs light energy used in photosynthesis."
+            },
+            {
+              "id": "matter",
+              "prompt": "Which two materials supply matter for photosynthesis?",
+              "answer": "Carbon dioxide and water. Light supplies energy rather than matter."
             }
           ]
         }
@@ -30,15 +35,12 @@
     },
     {
       "id": "connections",
-      "title": "Connect the concepts",
+      "title": "Make the distinction",
       "blocks": [
         {
           "id": "concepts",
-          "type": "list",
-          "items": [
-            "Light is the energy input.",
-            "Carbon dioxide and water supply matter."
-          ]
+          "type": "text",
+          "text": "**Energy:** light.\n**Matter:** carbon dioxide and water.\nExplain why those are different roles before checking off the prompt below."
         },
         {
           "id": "gaps",

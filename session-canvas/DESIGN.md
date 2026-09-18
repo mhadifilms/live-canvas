@@ -4,9 +4,11 @@ Live Canvas keeps a compact work product visible beside a conversation. Its cont
 
 ## Content and interaction
 
-Each canvas holds a context, authored sections, recent visible assistant messages, generic activity signals, and bounded revision history. Sections can mix text, lists, checklists, tables, reveal cards, and timelines. Optional HTML/SVG is isolated in a sandboxed frame. Primitive text is escaped through DOM text nodes.
+Each canvas holds a context, authored sections, recent visible assistant messages, generic activity signals, and bounded revision history. Sections can mix text, lists, checklists, tables, reveal cards, and timelines. Optional HTML/SVG is isolated in a sandboxed frame. Primitive text and a deliberately small Markdown subset use DOM text nodes; links accept only absolute HTTP(S)/mailto destinations. HTML remains text outside the isolated visual frame.
 
-Stable section IDs support small replacement deltas. Changing the context clears stale authored content in the same atomic update. Reveal cards remain open across unrelated automatic refreshes and close when their questions or context change. The compact interface prioritizes the work over status metadata and adapts to narrow viewports and light/dark themes.
+Stable section IDs support small replacement deltas. Changing the context clears stale authored content in the same atomic update. Recall state, checklist overrides, and explicit list shortlists survive unrelated polling and browser reload. Their keys include content signatures; changed answers/text and context boundaries invalidate stale choices. They never write back to the assistant. Each task keeps at most 400 entries / 200,000 serialized characters; denied storage falls back to page memory.
+
+The interface uses an 18px title, 14px section headings, 13px body text, and a restrained neutral palette. Spacing groups ordinary work without repeated card borders. Recall practice is the focal surface; checklists use native inputs, explicit selectable lists become shortlists, and wide tables stack labeled cells on narrow screens. Collections initially show five rows and three sections, with persisted disclosure for the rest; long summaries remain fully accessible. Settings holds theme and local reset controls. The visible status line distinguishes connection from authored edit time. Activity and human-readable history are separate collapsed sections with bounded previews and scroll areas; chat never displaces the authored artifact.
 
 ## Runtime
 
@@ -24,6 +26,6 @@ Hook responses arrive at message boundaries. Missed hook events are not replayed
 
 ## Verification
 
-Run `python3 -m unittest discover -s session-canvas -v` from the repository root. The suite covers session separation, atomic writes, event privacy, transcript recovery, content validation, HTTP restrictions, wrapper routing, and reversible installation.
+Run `python3 -m unittest discover -s session-canvas -v` and `node --test session-canvas/test_viewer.mjs` from the repository root. Node helper tests do not replace real browser checks. The suite covers session separation, atomic writes, event privacy, transcript recovery, content validation, HTTP restrictions, wrapper routing, and reversible installation.
 
 Manual client verification should confirm skill discovery, SessionStart identity, completed-response hook delivery, browser opening, automatic refresh without reload, narrow and light/dark layouts, context changes, and server restart. CI fixtures exercise the contracts without claiming that a particular client has loaded its hooks.

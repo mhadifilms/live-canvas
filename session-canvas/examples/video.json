@@ -2,9 +2,9 @@
   "context": {
     "id": "example-video",
     "label": "Shaping an edit",
-    "description": "Illustrative example only; not a record of actual work or verified progress."
+    "description": "Fictional edit brief. Match these proposed beats to actual footage; no timecodes are implied."
   },
-  "title": "An arrival, a problem, a resolution",
+  "title": "A repair worth finishing",
   "sections": [
     {
       "id": "sequence",
@@ -15,16 +15,16 @@
           "type": "timeline",
           "items": [
             {
-              "label": "Arrival",
-              "detail": "Establish the place and the central character."
+              "label": "The object",
+              "detail": "Start with the damaged object and the small detail that makes it worth keeping."
             },
             {
-              "label": "Complication",
-              "detail": "Introduce the obstacle using an observed moment from the footage."
+              "label": "The attempt",
+              "detail": "Stay with the hands through one failed attempt. Let the pause land before the next try."
             },
             {
-              "label": "Resolution",
-              "detail": "End on the consequence of the character\u2019s choice."
+              "label": "The return",
+              "detail": "End with the repaired object in use. Echo the opening detail so the change is visible."
             }
           ]
         }
@@ -32,12 +32,12 @@
     },
     {
       "id": "notes",
-      "title": "Source review",
+      "title": "Sound and rhythm",
       "blocks": [
         {
           "id": "shots",
           "type": "text",
-          "text": "Illustrative structure only. Match these beats to actual source footage before selecting shots or assigning timecodes."
+          "text": "Keep tactile sounds close. Hold a little longer on the failed attempt, then let the final action play without explanatory dialogue."
         }
       ]
     },

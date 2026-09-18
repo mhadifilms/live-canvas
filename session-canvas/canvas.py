@@ -157,7 +157,7 @@ def validate_sections(sections):
             require(identity(block.get("id")) and block["id"] not in block_ids, "block IDs must be unique within a section")
             block_ids.add(block["id"])
             kind = block.get("type")
-            allowed = {"text": {"text"}, "list": {"items", "ordered"}, "checklist": {"items"},
+            allowed = {"text": {"text"}, "list": {"items", "ordered", "selectable"}, "checklist": {"items"},
                        "table": {"columns", "rows"}, "reveal": {"items"}, "timeline": {"items"}}
             require(isinstance(kind, str) and kind in allowed, "unsupported block type")
             require(not set(block) - ({"id", "type"} | allowed[kind]), "unknown block field")
@@ -166,6 +166,7 @@ def validate_sections(sections):
             elif kind == "list":
                 require(strings(block.get("items")), "list needs string items")
                 require(isinstance(block.get("ordered", False), bool), "ordered must be boolean")
+                require(isinstance(block.get("selectable", False), bool), "selectable must be boolean")
             elif kind == "table":
                 columns, rows = block.get("columns"), block.get("rows")
                 require(strings(columns), "table columns must be strings")

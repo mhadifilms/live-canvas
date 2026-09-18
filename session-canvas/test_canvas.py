@@ -252,6 +252,7 @@ class CanvasTests(unittest.TestCase):
     def test_invalid_adaptive_updates_are_atomic(self):
         valid = {"id": "note", "type": "text", "text": "A note"}
         invalid_blocks = [
+            {"id": "bad", "type": "list", "items": ["Idea"], "selectable": "yes"},
             {"id": "bad", "type": "script", "text": "alert(1)"},
             {"id": "bad", "type": "table", "columns": ["One"], "rows": [["Two", "cells"]]},
             {"id": "bad", "type": "checklist", "items": [{"text": "Check", "checked": "yes"}]},
@@ -267,6 +268,17 @@ class CanvasTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     canvas.update_content(self.root, self.thread, patch)
                 self.assertEqual(self.state(), before)
+
+    def test_selectable_list_is_explicit_and_preserves_authored_items(self):
+        block = {"id": "ideas", "type": "list", "selectable": True,
+                 "items": ["First direction", "Second direction"]}
+        canvas.update_content(self.root, self.thread, {"sections": [{"id": "directions", "title": "Shortlist ideas", "blocks": [block]}]})
+        self.assertEqual(self.state()["content"]["sections"][0]["blocks"][0], block)
+        before = self.state()
+        with self.assertRaises(ValueError):
+            canvas.update_content(self.root, self.thread, {"sections": [{"id": "directions", "title": "Ideas", "blocks": [
+                {"id": "text", "type": "text", "text": "Not a list", "selectable": True}]}]})
+        self.assertEqual(self.state(), before)
 
     def test_viewer_only_known_paths_and_readonly_requests(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), canvas.make_handler(self.root, "secret", "instance"))

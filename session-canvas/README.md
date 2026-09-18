@@ -97,7 +97,7 @@ The latest assistant final response or commentary takes display precedence when 
 
 ## Adaptive content for any task
 
-The canvas has an open-ended authored context and six general-purpose block types. No scenario classifier, fixed mode list, or extra model call runs in the server. The active `live-canvas` skill instructs the assistant to choose useful structures at the start of a changed objective and update the actual work product at meaningful milestones. Transcript messages update automatically; semantic adaptation depends on the assistant following that instruction. Local disclosure interactions do not grade answers or persist learning scores.
+The canvas has an open-ended authored context and six general-purpose block types. No scenario classifier, fixed mode list, or extra model call runs in the server. The active `live-canvas` skill instructs the assistant to choose useful structures at the start of a changed objective and update the actual work product at meaningful milestones. Transcript messages update automatically; semantic adaptation depends on the assistant following that instruction. Recall practice supports self-marked Again / Got it choices. These are browser-only practice marks, not grading or assistant-verified learning scores.
 
 An update can contain:
 
@@ -116,20 +116,20 @@ An update can contain:
 
 Contexts accept any nonempty ID and label, with an optional description. Changing `context.id` atomically clears all previously authored content, including old sections, outcome/current text, visual, and legacy lists. Supply the new title/content in the same update. The old content is retained in revision history, and earlier assistant feed entries remain in the archive. Old automatic summaries are cleared; transcript backlogs older than the context boundary cannot restore them. `"context": null` switches back to an unclassified context and also resets content.
 
-Within the same context, omitted fields stay intact; `sections` replaces the entire ordered section list when provided. `"replace": true` resets authored content even within the same context, preserving only the context unless replaced explicitly. Copy chosen relevant material into that same update for deliberate carry-over. A new context or replacement closes earlier reveal cards. Ordinary transcript revisions leave authored blocks and open disclosures intact; updated questions start closed. Disclosure state lasts for the current browser page, not across a reload.
+Within the same context, omitted fields stay intact; `sections` replaces the entire ordered section list when provided. `"replace": true` resets authored content even within the same context, preserving only the context unless replaced explicitly. Copy chosen relevant material into that same update for deliberate carry-over. A new context or replacement resets browser interactions through the context boundary. Unrelated feed updates preserve the work surface. Checklist marks, shortlists, recall position, and revealed answers survive reload in the same browser origin. Changed item text, answers, or authored checklist values invalidate the corresponding local choices.
 
 Sections require unique `id`, string `title`, and `blocks`. Each block requires `id` (unique within its section) and `type`. Section/block/reveal IDs use 1–80 letters, numbers, underscores, dots, or hyphens and begin with a letter or number. At most 30 sections and 30 blocks per section are accepted. Unknown fields/types are rejected before mutation. Empty sections/blocks do not render filler.
 
 | Type | Additional fields | Behavior |
 | --- | --- | --- |
 | `text` | `text`: string | Plain text, retaining line breaks. |
-| `list` | `items`: strings; optional `ordered`: boolean | Bullets or an ordered outline. |
-| `checklist` | `items`: objects with `text` and optional boolean `checked` | Read-only authored status; no completion is inferred. |
+| `list` | `items`: strings; optional `ordered` and `selectable`: booleans | Bullets or an ordered outline. `selectable: true` enables a browser-only shortlist and Copy shortlist. |
+| `checklist` | `items`: objects with `text` and optional boolean `checked` | Authored initial values with native, browser-local checkbox overrides. Local marks do not change task state or establish verified completion. |
 | `table` | `columns`: strings; `rows`: arrays of strings with matching width | Horizontally scrollable comparison or evidence table. |
-| `reveal` | `items`: objects with unique `id`, `prompt`, `answer` strings | Click or keyboard-activate a question to reveal its answer. |
+| `reveal` | `items`: objects with unique `id`, `prompt`, `answer` strings | One-card recall practice: Reveal answer, Again, Got it, navigation, and a retry queue. Marks stay in this browser. |
 | `timeline` | `items`: objects with `label`, optional `detail` and `at` strings | Ordered beats, steps, or events; `at` is optional authored text, never synthesized. |
 
-All primitive text is escaped through DOM text nodes. HTML/SVG belongs only in the existing isolated `visual_html` surface. Sections may mix block types freely. The same primitives support study questions, idea groups, essay arguments/drafts, feature/check lists, edit beats, research notes, planning, and other scenarios. The UI does not impose scenario-specific labels or quotas.
+Primitive text is rendered through DOM text nodes. Text supports a small safe Markdown subset: bold, emphasis, inline code, and absolute HTTP(S)/mailto links. Raw HTML stays text; executable, local-file, and relative URLs become readable labels without links. Links use a new tab with no opener or referrer. HTML/SVG belongs only in the existing isolated `visual_html` surface. Sections may mix block types freely. The same primitives support study questions, idea groups, essay arguments/drafts, feature/check lists, edit beats, research notes, planning, and other scenarios. The UI does not guess interaction modes from task labels. Mark a list `selectable: true` only when choosing a shortlist is useful. Tables with more than two columns become labeled rows on narrow screens. Collections initially show five items/rows and the workspace shows three sections; remaining content is available through persisted Show more controls. Long authored summaries and text have explicit full-text disclosures rather than losing the rest of the content.
 
 Six fictional examples are bundled in `examples/study.json`, `brainstorm.json`, `essay.json`, `feature.json`, `video.json`, and `custom.json`. They contain no claimed test passes, grades, media timecodes, or verified source data. Preview them only on a dedicated example thread; applying one to a real task intentionally switches its context:
 
@@ -137,6 +137,10 @@ Six fictional examples are bundled in `examples/study.json`, `brainstorm.json`, 
 python3 canvas.py start --thread example-preview
 python3 canvas.py update --thread example-preview --file examples/study.json
 ```
+
+Browser interactions never send writes to the runtime or the assistant. Settings explains this boundary and can reset local interactions; each interactive block also labels its local scope. Storage is bounded per task to 400 entries and 200,000 serialized characters, with older entries pruned. A context change replaces the active cache. If browser storage is unavailable, interaction remains usable for the current page. Clearing site data or changing the server origin also loses saved choices.
+
+The header reports the real connection separately from authored freshness (`curated_at`), so incoming chat messages do not make old work look freshly edited. Activity and version history start collapsed, with four short message previews and five readable prior versions in bounded scroll areas. Automatic responses never replace the main authored work. Copy work exports authored content; Copy shortlist exports the current local selection as plain visible text. A clipboard error reports failure rather than a false success.
 
 Existing flat updates remain valid. Schema-1 states gain default context/sections on the next mutation while preserving previous content. History retains the original snapshots.
 
@@ -185,6 +189,7 @@ From the project root:
 
 ```sh
 python3 -m unittest discover -s session-canvas -v
+node --test session-canvas/test_viewer.mjs
 ```
 
-Tests cover per-task isolation, concurrent writes, automatic/curated separation, disabled hooks, deduplication, transcript identity/privacy, partial-line recovery, private state permissions, endpoint restrictions, origin checks, read-only HTTP, legacy migration, context switching, explicit replacement, schema validation, and all six fixtures. Browser verification should also confirm live updates without reload, narrow light/dark layout, retained state after server restart, sandboxed visuals, stable reveals across activity refreshes, and closed reveals after context/question changes.
+Tests cover per-task isolation, concurrent writes, automatic/curated separation, disabled hooks, deduplication, transcript identity/privacy, partial-line recovery, private state permissions, endpoint restrictions, origin checks, read-only HTTP, legacy migration, context switching, explicit replacement, schema validation, and all six fixtures. Node helper tests cover safe links/text, local persistence and invalidation, denied storage, and bounded caches without extra dependencies. Browser verification must separately confirm keyboard and screen-reader names, native checkbox behavior, recall/shortlist persistence through polling and reload, changed-answer reset, clipboard success/failure, narrow light/dark layouts, bounded activity/history, authored freshness, and sandboxed visuals.

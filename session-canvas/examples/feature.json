@@ -2,7 +2,7 @@
   "context": {
     "id": "example-feature",
     "label": "Designing a feature",
-    "description": "Illustrative example only; not a record of actual work or verified progress."
+    "description": "Proposed interaction contract. Checks are personal review notes, not automated test results."
   },
   "title": "Save draft before leaving",
   "sections": [
@@ -13,21 +13,34 @@
         {
           "id": "contract",
           "type": "text",
-          "text": "Proposed behavior: keep a local draft after an accidental navigation. Confirm product requirements before implementation."
+          "text": "An accidental navigation should not erase an unfinished draft. On return, offer **Restore draft** and **Discard** so recovery stays a deliberate choice."
         }
       ]
     },
     {
       "id": "implementation",
-      "title": "Implementation sketch",
+      "title": "States to design",
       "blocks": [
         {
-          "id": "parts",
-          "type": "list",
-          "items": [
-            "Define the saved draft format.",
-            "Restore only compatible drafts.",
-            "Provide an explicit discard action."
+          "id": "states",
+          "type": "table",
+          "columns": [
+            "Situation",
+            "What the user sees"
+          ],
+          "rows": [
+            [
+              "Saved draft available",
+              "A preview and Restore / Discard actions."
+            ],
+            [
+              "Draft belongs to another document",
+              "No automatic replacement of the current document."
+            ],
+            [
+              "Storage unavailable",
+              "An honest notice that the draft cannot be saved locally."
+            ]
           ]
         }
       ]

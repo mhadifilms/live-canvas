@@ -2,28 +2,29 @@
   "context": {
     "id": "example-brainstorm",
     "label": "Exploring possibilities",
-    "description": "Illustrative example only; not a record of actual work or verified progress."
+    "description": "An imagined gathering. Shortlist the directions you want to explore."
   },
-  "title": "A small community gathering",
+  "title": "Bring people together",
   "sections": [
     {
       "id": "ideas",
-      "title": "Candidate directions",
+      "title": "Choose a direction",
       "blocks": [
         {
           "id": "groups",
           "type": "list",
           "items": [
-            "A shared table: participants bring a story behind an object.",
-            "A listening walk: compare observations of the same place.",
-            "A repair afternoon: learn by fixing something together."
-          ]
+            "**A shared table** — bring an object and tell its story.",
+            "**A listening walk** — notice the same place through different eyes.",
+            "**A repair afternoon** — learn a practical skill side by side."
+          ],
+          "selectable": true
         }
       ]
     },
     {
       "id": "compare",
-      "title": "What each idea asks of us",
+      "title": "Before choosing",
       "blocks": [
         {
           "id": "tradeoffs",

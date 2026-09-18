@@ -2,7 +2,7 @@
 
 A small, local workspace beside your AI conversation. Keep the actual work visible: an outline, evidence, decisions, study questions, edit beats, or a diagram. The assistant updates authored sections at meaningful milestones; lightweight local adapters bring in activity and visible responses automatically.
 
-Python standard library only. No API keys, packages, hosted service, or background model calls. The browser viewer is read-only, with light and dark themes and six flexible content blocks.
+Python standard library only. No API keys, packages, hosted service, or background model calls. The viewer has light and dark themes, six flexible content blocks, and useful browser-local interactions. It never writes back to the assistant or runtime.
 
 ## Supported clients
 
@@ -71,7 +71,7 @@ Open the returned URL. Use `stop --thread example-preview` to disable that examp
 
 ## How it stays useful
 
-Authored sections support text, lists, checklists, tables, reveal cards, and timelines, plus optional isolated HTML/SVG visuals. Stable section IDs let the assistant update only what changed. A new context clears stale authored content and retains revision history.
+Authored sections support text, lists, checklists, tables, recall cards, and timelines, plus optional isolated HTML/SVG visuals. Check off personal review items, practice with Again / Got it, or shortlist candidate ideas and copy your choices. These interactions persist in your browser, reset when their content changes, and never imply assistant-verified results. A compact header separates connection status from authored freshness; bounded activity and readable version history stay collapsed until needed. Stable section IDs let the assistant update only what changed. A new context clears stale authored content and retains revision history.
 
 Automatic observations never infer a plan, completion, scores, or semantic adaptation. Claude Code and Cursor deliver response text at message boundaries, not token by token. The assistant must still update useful sections at milestones and before its final reply. A bounded `status --summary` digest keeps that work inexpensive.
 
@@ -93,8 +93,9 @@ Run the offline tests from the repository root:
 
 ```sh
 python3 -m unittest discover -s session-canvas -v
+node --test session-canvas/test_viewer.mjs
 ```
 
-CI runs the same suite on Python 3.10 and 3.12. Host hook loading and browser behavior also need verification in the installed client; unit tests do not establish that a host has loaded the integration.
+CI runs the Python suite on 3.10 and 3.12, plus dependency-free Node tests for viewer helpers. Node is needed only for those development tests, not to run the canvas. Host hook loading and browser behavior also need verification in the installed client; unit tests do not establish that a host has loaded the integration.
 
 Inspired by [sebi75/herdr-canvas](https://github.com/sebi75/herdr-canvas). Live Canvas does not require Herdr. Licensed under [MIT](LICENSE).

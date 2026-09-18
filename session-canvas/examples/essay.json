@@ -2,34 +2,33 @@
   "context": {
     "id": "example-essay",
     "label": "Drafting an essay",
-    "description": "Illustrative example only; not a record of actual work or verified progress."
+    "description": "An illustrative argument draft. Evidence and citations still need to be collected."
   },
   "title": "Libraries as public infrastructure",
   "sections": [
     {
       "id": "argument",
-      "title": "Working thesis",
+      "title": "Working opening",
       "blocks": [
         {
           "id": "thesis",
           "type": "text",
-          "text": "Public libraries can be evaluated as shared civic infrastructure as well as collections of books. This is a proposed argument, not a sourced conclusion."
+          "text": "A library offers more than a collection. It provides somewhere to sit, a way to reach information, and a person who can help you begin. If we count only borrowed books, we may miss much of what that public space makes possible."
         }
       ]
     },
     {
       "id": "outline",
-      "title": "Argument path",
+      "title": "Build the argument",
       "blocks": [
         {
           "id": "steps",
           "type": "list",
           "ordered": true,
           "items": [
-            "Define the infrastructure claim.",
-            "Examine access to space, information, and support.",
-            "Address the strongest alternative use of public funds.",
-            "Return to a specific, defensible conclusion."
+            "Define what a shared public resource makes possible.",
+            "Test the claim with verified examples of access to space, information, and support.",
+            "Answer the strongest competing use of the same public funds."
           ]
         }
       ]

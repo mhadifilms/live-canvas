@@ -31,9 +31,9 @@ At the start of a meaningful turn, run `status --summary` and inspect its bounde
 
 ## Author the actual work
 
-Infer context from the user's objective and evidence; do not ask them to choose a mode. At most three small sections should be visible by default, with at most five short items per section and two-line summaries. Show the actual artifact: an outline, argument, evidence, edit beats, candidate ideas, or verified checks. Record meaningful changes only. Do not repeat arbitrary turn logs or generated prose.
+Infer context from the user's objective and evidence; do not ask them to choose a mode. At most three small sections should be visible by default, with at most five short items per section and two-line summaries. Lead with the actual work: draft paragraphs, an argument, cited evidence, edit beats, candidate ideas, recall questions, or a concrete design. Do not make installation details, delivery recaps, agent activity, or generic status reports the main artifact unless that is the user’s task. Record meaningful changes only. Do not repeat arbitrary turn logs or generated prose.
 
-Use `context.id`, a descriptive label, a short title, and flexible `sections` with stable IDs. Supported blocks are `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; the full schema and examples are in `../session-canvas/README.md`. Primitive text is escaped. `visual_html` is optional isolated HTML/SVG for a diagram, never a tool surface.
+Use `context.id`, a descriptive label, a short title, and flexible `sections` with stable IDs. Supported blocks are `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; the full schema and examples are in `../session-canvas/README.md`. Use `list.selectable: true` for candidate ideas the user can shortlist. Checklists are local review aids; recall cards offer Again / Got it practice. These browser-only actions are not sent back to you and are not proof of completion or learning. Never assume a local choice without user input. Keep long prose and wide comparisons focused; the viewer adapts tables at narrow widths. Primitive text supports safe bold/emphasis/code/links. `visual_html` is optional isolated HTML/SVG for a diagram, never a tool surface.
 
 For the same context, prefer a delta:
 
