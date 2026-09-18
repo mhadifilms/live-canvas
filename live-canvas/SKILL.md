@@ -27,7 +27,7 @@ Open the returned URL once: Codex uses `mcp__codex_app__open_in_codex` with `{ty
 
 To author an update, write a small JSON artifact and run the same session command with `update --file <json-path>`.
 
-At the start of a meaningful turn, run `status --summary` and inspect its bounded digest first. It is capped at 4,000 serialized characters and includes context, revision, current/outcome previews, and section IDs/titles/block counts/types with short previews. It excludes feed, history, and visual HTML. If `summary.truncated` is true, read the returned `state_file` only for the specific detail needed. A blocked loopback health probe is not evidence that the server stopped; do not launch a second server.
+At the start of a meaningful turn, run `status --summary` and inspect its bounded digest first. It is capped at 4,000 serialized characters and includes context, revision, current/outcome previews, and section IDs/titles/block counts/types with short previews. It excludes feed, history, and visual HTML. If `summary.truncated` is true, read the returned `state_file` only for the specific detail needed. Oversized metadata can be null with `metadata_truncated`; keep using the exact known session command, never a clipped summary identity or invented path. A blocked loopback health probe is not evidence that the server stopped; do not launch a second server.
 
 ## Author the actual work
 

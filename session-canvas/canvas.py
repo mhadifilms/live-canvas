@@ -580,12 +580,14 @@ def _clipped(value, limit):
 
 def status_summary(state, limit=SUMMARY_MAX):
     """Return a deterministic, bounded digest for agents before targeted reads."""
+    if limit < 32:
+        raise ValueError("Summary budget must be at least 32 characters")
     content = state.get("content") or {}
     context = content.get("context")
     digest = {
-        "thread": state.get("thread"),
+        "thread": _preview(state.get("thread"), 160),
         "revision": state.get("revision"),
-        "context": ({"id": context.get("id"), "label": context.get("label")} if isinstance(context, dict) else None),
+        "context": ({"id": _preview(context.get("id"), 160), "label": _preview(context.get("label"), 240)} if isinstance(context, dict) else None),
         "title": _preview(content.get("title"), 120),
         "current": _preview(content.get("current")),
         "outcome": _preview(content.get("outcome")),
@@ -594,6 +596,8 @@ def status_summary(state, limit=SUMMARY_MAX):
     }
     digest["truncated"] = any(_clipped(content.get(field), limit)
                               for field, limit in (("title", 120), ("current", 180), ("outcome", 180)))
+    digest["truncated"] |= _clipped(state.get("thread"), 160) or bool(isinstance(context, dict) and (
+        _clipped(context.get("id"), 160) or _clipped(context.get("label"), 240)))
     for section in content.get("sections") or []:
         blocks = section.get("blocks") or []
         item = {"id": section.get("id"), "title": _preview(section.get("title"), 120),
@@ -625,13 +629,37 @@ def status_summary(state, limit=SUMMARY_MAX):
             digest["sections"][-1]["previews"].pop()
         elif digest["sections"]:
             digest["sections"].pop()
-        elif digest["current"] or digest["outcome"]:
-            digest["current"] = _preview(digest["current"], max(20, len(digest["current"]) // 2))
-            digest["outcome"] = _preview(digest["outcome"], max(20, len(digest["outcome"]) // 2))
         else:
             break
         digest["truncated"] = True
+    # Each step removes a field's content exactly once; small budgets cannot spin.
+    for field in ("current", "outcome", "title", "context", "thread"):
+        if len(encoded()) <= limit:
+            break
+        digest[field] = None if field in {"context", "thread"} else ""
+        digest["truncated"] = True
+    if len(encoded()) > limit:
+        return {"truncated": True}
     return digest
+
+
+def status_summary_result(state, thread, state_file, limit=SUMMARY_MAX):
+    """Budget the whole CLI response, retaining exact metadata or omitting it."""
+    if limit < 256:
+        raise ValueError("Status response budget must be at least 256 characters")
+    result = {"thread": thread, "enabled": bool(state and state["enabled"]),
+              "revision": state["revision"] if state else None,
+              "summary": None, "state_file": str(state_file)}
+    encoded = lambda: json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+    for field in sorted(("state_file", "thread", "revision"),
+                        key=lambda name: len(json.dumps(result[name], ensure_ascii=False)), reverse=True):
+        if len(encoded()) <= limit - 32:
+            break
+        result[field] = None
+        result["metadata_truncated"] = True
+    budget = limit - len(encoded()) + len("null")
+    result["summary"] = status_summary(state or {"thread": thread}, budget)
+    return result
 
 
 def main():
@@ -716,20 +744,8 @@ def main():
         else:
             state = read_json(task_dir(root, thread) / "state.json")
         if args.command == "status" and args.summary:
-            result = {"thread": thread, "enabled": bool(state and state["enabled"]),
-                      "revision": state["revision"] if state else None,
-                      "summary": status_summary(state or {"thread": thread}),
-                      "state_file": str(task_dir(root, thread) / "state.json")}
-            encoded = lambda: json.dumps(result, ensure_ascii=False, separators=(",", ":"))
-            # Keep the complete printed response bounded, including metadata overhead.
-            while len(encoded()) > SUMMARY_MAX and result["summary"].get("sections"):
-                result["summary"] = status_summary(state or {"thread": thread},
-                    max(128, len(json.dumps(result["summary"], ensure_ascii=False)) - 256))
-            if len(encoded()) > SUMMARY_MAX:
-                result["summary"]["current"] = _preview(result["summary"].get("current"), 80)
-                result["summary"]["outcome"] = _preview(result["summary"].get("outcome"), 80)
-                result["summary"]["truncated"] = True
-            print(encoded())
+            result = status_summary_result(state, thread, task_dir(root, thread) / "state.json")
+            print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
             return 0
         health_unavailable = False
         try:

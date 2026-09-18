@@ -54,26 +54,92 @@
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
-let state = null, etag = null, failures = 0, workSignature = '', outcomeSignature = '', activitySignature = '', historySignature = '', lastVisual = null, boundary = '', localValues = {}, localStoreKey = '', storageAvailable = true, toastTimer;
+let state = null, etag = null, failures = 0, workSignature = '', outcomeSignature = '', activitySignature = '', historySignature = '', lastVisual = null, boundary = '', localValues = {}, storageAvailable = true, toastTimer;
 function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
 function hash(text) { let value = 2166136261; for (let i = 0; i < text.length; i++) value = Math.imul(value ^ text.charCodeAt(i), 16777619); return (value >>> 0).toString(36); }
+// Synchronous SHA-256 keeps content keys compact without making rendering async.
+const digestInitial = [], digestConstants = [];
+for (let candidate = 2; digestConstants.length < 64; candidate++) {
+  let prime = true; for (let factor = 2; factor * factor <= candidate; factor++) if (candidate % factor === 0) { prime = false; break; }
+  if (prime) { if (digestInitial.length < 8) digestInitial.push((Math.sqrt(candidate) % 1 * 0x100000000) >>> 0); digestConstants.push((Math.cbrt(candidate) % 1 * 0x100000000) >>> 0); }
+}
+function fingerprint(text) {
+  const bytes = new TextEncoder().encode(text), buffer = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64), words = new Uint32Array(64), result = digestInitial.slice();
+  buffer.set(bytes); buffer[bytes.length] = 0x80; const view = new DataView(buffer.buffer);
+  view.setUint32(buffer.length - 8, Math.floor(bytes.length / 0x20000000)); view.setUint32(buffer.length - 4, (bytes.length * 8) >>> 0);
+  const rotate = (value, bits) => (value >>> bits) | (value << (32 - bits));
+  for (let offset = 0; offset < buffer.length; offset += 64) {
+    for (let i = 0; i < 16; i++) words[i] = view.getUint32(offset + i * 4);
+    for (let i = 16; i < 64; i++) { const x = words[i - 15], y = words[i - 2]; words[i] = (words[i - 16] + (rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3)) + words[i - 7] + (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10))) >>> 0; }
+    let [a, b, c, d, e, f, g, h] = result;
+    for (let i = 0; i < 64; i++) { const first = (h + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + digestConstants[i] + words[i]) >>> 0; const second = ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0; h = g; g = f; f = e; e = (d + first) >>> 0; d = c; c = b; b = a; a = (first + second) >>> 0; }
+    [a, b, c, d, e, f, g, h].forEach((value, i) => { result[i] = (result[i] + value) >>> 0; });
+  }
+  return result.map(value => value.toString(16).padStart(8, '0')).join('');
+}
 function storageGet(key) { try { return localStorage.getItem(key); } catch { storageAvailable = false; return null; } }
 function storageSet(key, value) { try { localStorage.setItem(key, value); } catch { storageAvailable = false; } updateStorageNote(); }
+function storageRemove(key) { try { localStorage.removeItem(key); } catch { storageAvailable = false; } }
+function storageKeys(prefix) { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(key => key?.startsWith(prefix)); } catch { storageAvailable = false; return []; } }
 function updateStorageNote() { $('storage-note').textContent = storageAvailable ? 'Checks, shortlists, and practice are saved in this browser only. They are not sent to the assistant.' : 'Browser storage is unavailable. Interactions last for this page only and are not sent to the assistant.'; }
+let localPrefix = '', localEpoch = '0', localContext = '', legacyStoreKey = '';
+function syncLocalEpoch() {
+  if (!localPrefix || !storageAvailable) return;
+  const next = storageGet(localPrefix + 'epoch') || '0';
+  if (next !== localEpoch) { localEpoch = next; localValues = {}; }
+}
+function recordKey(digest) { return localPrefix + 'record:' + localEpoch + ':' + localContext + ':' + digest; }
+function readRecord(key) { try { const value = JSON.parse(storageGet(key)); return value && Object.hasOwn(value, 'value') ? value : null; } catch { return null; } }
+function boundLocalRecords() {
+  const records = storageKeys(localPrefix + 'record:').map(key => { const text = storageGet(key) || ''; let at = 0; try { at = JSON.parse(text)?.at || 0; } catch {} return { key, size: key.length + text.length, at }; }).sort((a, b) => a.at - b.at);
+  let size = records.reduce((sum, item) => sum + item.size, 0), count = records.length;
+  for (const item of records) { if (count <= 400 && size <= 200000) break; storageRemove(item.key); count--; size -= item.size; }
+  const keys = Object.keys(localValues); for (const key of keys.slice(0, Math.max(0, keys.length - 400))) delete localValues[key];
+}
+function migrateLegacy() {
+  if (localEpoch !== '0') return;
+  let saved; try { saved = JSON.parse(storageGet(legacyStoreKey)); } catch { return; }
+  if (saved?.boundary !== boundary || !saved.values || typeof saved.values !== 'object') return;
+  for (const [oldKey, item] of Object.entries(saved.values)) {
+    if (typeof item?.signature !== 'string' || hash(item.signature) !== oldKey || !Object.hasOwn(item, 'value')) continue;
+    const digest = fingerprint(item.signature), key = recordKey(digest);
+    if (readRecord(key) === null) { localValues[digest] = { value: item.value }; storageSet(key, JSON.stringify({ value: item.value, at: Date.now() })); }
+  }
+  if (storageAvailable) storageRemove(legacyStoreKey); boundLocalRecords();
+}
 function useLocalState(data) {
   const next = JSON.stringify([data.thread, data.content.context?.id || null, data.context_started_at || null]);
-  if (next === boundary) return;
-  boundary = next; localStoreKey = 'live-canvas-interactions-v1:' + hash(data.thread); localValues = {};
-  try { const saved = JSON.parse(storageGet(localStoreKey)); if (saved?.boundary === boundary && saved.values && typeof saved.values === 'object') localValues = saved.values; } catch {}
-  updateStorageNote();
+  if (next === boundary) { syncLocalEpoch(); return; }
+  boundary = next; localValues = {}; localPrefix = 'live-canvas-interactions-v2:' + fingerprint(data.thread) + ':'; localContext = fingerprint(boundary);
+  legacyStoreKey = 'live-canvas-interactions-v1:' + hash(data.thread); localEpoch = storageGet(localPrefix + 'epoch') || '0';
+  migrateLegacy(); updateStorageNote();
 }
-function localGet(signature, fallback) { const item = localValues[hash(signature)]; return item?.signature === signature ? item.value : fallback; }
+function localGet(signature, fallback) {
+  syncLocalEpoch(); const digest = fingerprint(signature), stored = readRecord(recordKey(digest));
+  if (stored) { localValues[digest] = { value: stored.value }; return stored.value; }
+  if (storageAvailable) delete localValues[digest];
+  return Object.hasOwn(localValues, digest) ? localValues[digest].value : fallback;
+}
 function localSet(signature, value) {
-  const key = hash(signature); delete localValues[key]; localValues[key] = { signature, value };
-  const keys = Object.keys(localValues); for (const old of keys.slice(0, Math.max(0, keys.length - 400))) delete localValues[old];
-  while (JSON.stringify(localValues).length > 200000 && Object.keys(localValues).length) delete localValues[Object.keys(localValues)[0]];
-  storageSet(localStoreKey, JSON.stringify({ boundary, values: localValues }));
+  syncLocalEpoch(); const digest = fingerprint(signature), key = recordKey(digest), stored = readRecord(key);
+  delete localValues[digest]; localValues[digest] = { value };
+  // Identical paints do not write, preventing cross-tab storage-event loops.
+  if (!stored || JSON.stringify(stored.value) !== JSON.stringify(value)) storageSet(key, JSON.stringify({ value, at: Date.now() }));
+  boundLocalRecords();
 }
+function resetLocalState() {
+  localEpoch = Date.now().toString(36) + '-' + crypto.randomUUID(); localValues = {};
+  storageSet(localPrefix + 'epoch', localEpoch); storageRemove(legacyStoreKey);
+  // Other tabs may already have written in the new epoch: preserve those records.
+  for (const key of storageKeys(localPrefix + 'record:')) if (!key.startsWith(localPrefix + 'record:' + localEpoch + ':')) storageRemove(key);
+}
+function refreshLocalView() {
+  if (!state) return; workSignature = outcomeSignature = historySignature = ''; render(state);
+}
+window.addEventListener('storage', event => {
+  if (event.storageArea !== localStorage || !localPrefix || (event.key !== null && !event.key.startsWith(localPrefix))) return;
+  syncLocalEpoch(); refreshLocalView();
+});
 function itemKey(sectionId, block, item, index = 0) { return JSON.stringify([sectionId, block.id, block.type, index, item]); }
 function shorten(value, limit) { const text = String(value || ''); return text.length > limit ? text.slice(0, limit).trimEnd() + '…' : text; }
 function relative(stamp) { const age = Math.max(0, (Date.now() - new Date(stamp).getTime()) / 1000); if (!Number.isFinite(age)) return 'time unavailable'; if (age < 60) return 'just now'; if (age < 3600) return Math.floor(age / 60) + 'm ago'; if (age < 86400) return Math.floor(age / 3600) + 'h ago'; return Math.floor(age / 86400) + 'd ago'; }
@@ -104,7 +170,7 @@ async function copyText(text, message = 'Copied') {
   } catch { announce('Copy unavailable. Select the text to copy it.'); }
 }
 function visibleBlock(block) { if (block.type === 'text') return !!block.text.trim(); if (block.type === 'table') return block.columns.length && block.rows.some(row => row.some(value => value.trim())); return block.items.some(item => typeof item === 'string' ? item.trim() : block.type === 'reveal' ? item.prompt.trim() && item.answer.trim() : block.type === 'timeline' ? item.label.trim() : item.text.trim()); }
-function disclosure(summary, signature) { const context = boundary, details = node('details', undefined, 'more-items'); details.append(node('summary', summary)); details.open = localGet(signature, false) === true; details.addEventListener('toggle', () => { if (boundary === context) localSet(signature, details.open); }); return details; }
+function disclosure(summary, signature) { const context = boundary, epoch = localEpoch, details = node('details', undefined, 'more-items'); details.append(node('summary', summary)); details.open = localGet(signature, false) === true; details.addEventListener('toggle', () => { if (boundary === context && epoch === localEpoch) localSet(signature, details.open); }); return details; }
 function foldCollection(collection, signature, limit = 5, label = 'items') {
   const extra = Array.from(collection.children).slice(limit); if (!extra.length) return;
   const more = disclosure('Show ' + extra.length + ' more ' + label, signature), tail = collection.cloneNode(false);
@@ -256,7 +322,7 @@ function render(data) {
   if (previousBoundary && previousBoundary !== boundary) { $('activity-panel').open = false; $('history-panel').open = false; window.scrollTo(0, 0); }
 }
 $('copy-work').onclick = () => { if (state) copyText(authoredText(state.content), 'Authored work copied'); };
-$('reset-local').onclick = () => { localValues = {}; if (state) { storageSet(localStoreKey, JSON.stringify({ boundary, values: {} })); renderWork(state, true); } $('settings').open = false; announce('Browser-only interactions reset'); };
+$('reset-local').onclick = () => { if (state) { resetLocalState(); refreshLocalView(); } $('settings').open = false; announce('Browser-only interactions reset'); };
 $('visual-expand').onclick = () => { const expanded = $('visual').classList.toggle('expanded'); $('visual-expand').textContent = expanded ? 'Reduce' : 'Expand'; };
 const savedTheme = storageGet('session-canvas-theme') || 'auto'; $('theme-select').value = ['auto', 'light', 'dark'].includes(savedTheme) ? savedTheme : 'auto';
 function applyTheme(value) { if (value === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = value; }
@@ -264,7 +330,7 @@ applyTheme($('theme-select').value); $('theme-select').onchange = () => { applyT
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('settings').open) { $('settings').open = false; $('settings').querySelector('summary').focus(); } });
 document.addEventListener('click', event => { if ($('settings').open && !$('settings').contains(event.target)) $('settings').open = false; });
 async function poll() {
-  try { const response = await fetch('state', { headers: etag ? { 'If-None-Match': etag } : {}, cache: 'no-store' }); if (response.status !== 304) { if (!response.ok) throw Error(response.status); etag = response.headers.get('ETag'); render(await response.json()); } failures = 0; $('connection').dataset.live = 'true'; $('connection-text').textContent = 'Connected'; refreshTimes(); }
+  try { const response = await fetch('state', { headers: etag ? { 'If-None-Match': etag } : {}, cache: 'no-store' }); if (response.status !== 304) { if (!response.ok) throw Error(response.status); const next = await response.json(), previous = state; try { render(next); } catch (error) { state = previous; workSignature = outcomeSignature = activitySignature = historySignature = ''; lastVisual = null; if (previous) { try { render(previous); } catch {} } throw error; } etag = response.headers.get('ETag'); } failures = 0; $('connection').dataset.live = 'true'; $('connection-text').textContent = 'Connected'; refreshTimes(); }
   catch { failures++; $('connection').dataset.live = 'false'; $('connection-text').textContent = state ? 'Reconnecting · saved view' : 'Connecting'; if (!state) $('loading').textContent = 'Canvas unavailable. Start the local server and open its current URL.'; }
   setTimeout(poll, document.hidden ? 5000 : Math.min(10000, 1000 * Math.max(1, failures)));
 }

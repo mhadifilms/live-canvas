@@ -228,6 +228,32 @@ class CanvasTests(unittest.TestCase):
         self.assertNotIn("history-secret", result.stdout)
         self.assertNotIn("visual-secret", result.stdout)
 
+    def test_summary_long_context_and_identity_terminate_with_bounded_cli_output(self):
+        thread = "t" * 6000
+        canvas.update_content(self.root, thread, {"context": {"id": "i" * 5000, "label": "l" * 5000}, "current": "x"})
+        result = subprocess.run([sys.executable, str(Path(canvas.__file__)), "--home", str(self.root),
+                                 "status", "--thread", thread, "--summary"],
+                                check=True, capture_output=True, text=True, timeout=3)
+        self.assertLessEqual(len(result.stdout.strip()), canvas.SUMMARY_MAX)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["summary"]["truncated"])
+        self.assertTrue(payload["metadata_truncated"])
+        self.assertIsNone(payload["thread"])
+        self.assertEqual(payload["state_file"], str(canvas.task_dir(self.root.resolve(), thread) / "state.json"))
+
+    def test_summary_tiny_budgets_and_long_metadata_are_finite(self):
+        snapshot = canvas.initial("t" * 6000)
+        snapshot["content"].update(context={"id": "i" * 5000, "label": "l" * 5000}, current="x", outcome="y")
+        for budget in (32, 64, 128, 512, canvas.SUMMARY_MAX):
+            summary = canvas.status_summary(snapshot, budget)
+            self.assertLessEqual(len(json.dumps(summary, ensure_ascii=False, separators=(",", ":"))), budget)
+            self.assertTrue(summary["truncated"])
+        result = canvas.status_summary_result(snapshot, snapshot["thread"], "/" + "path" * 4000)
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=False, separators=(",", ":"))), canvas.SUMMARY_MAX)
+        self.assertTrue(result["metadata_truncated"])
+        with self.assertRaises(ValueError):
+            canvas.status_summary(snapshot, 31)
+
     def test_old_transcript_backlog_does_not_restore_previous_context(self):
         self.transcript([self.message("final_answer", "Old final", id="old")])
         canvas.update_content(self.root, self.thread, {"context": {"id": "new", "label": "New topic"}})
