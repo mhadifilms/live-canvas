@@ -4,6 +4,8 @@ A small, local workspace beside your AI conversation. Keep the actual work visib
 
 Python standard library only. No API keys, packages, hosted service, or background model calls. The viewer has light and dark themes, six flexible content blocks, and useful browser-local interactions. It never writes back to the assistant or runtime.
 
+![Live Canvas running beside a conversation in the Codex desktop app](docs/images/live-canvas-codex.png)
+
 ## Supported clients
 
 | Client | Automatic observations | Viewer |
