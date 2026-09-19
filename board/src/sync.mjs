@@ -29,7 +29,11 @@ export function mergeAcknowledgement(local, submitted, remote) {
   );
   return [
     ...remote.map((e) => pending.get(e.id) || e),
-    ...local.filter((e) => !remote.some((r) => r.id === e.id)),
+    ...local.filter(
+      (e) =>
+        !remote.some((r) => r.id === e.id) &&
+        (!sent.has(e.id) || pending.has(e.id)),
+    ),
   ];
 }
 export function safeLink(link, origin) {

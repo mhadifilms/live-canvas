@@ -75,3 +75,10 @@ test("debounced viewport work cancels the latest timer on unmount", () => {
   run.cancel();
   assert.deepEqual(cancelled, [undefined, 1, 2]);
 });
+test("retired server objects are not reintroduced by an unchanged save acknowledgement", () => {
+  assert.deepEqual(mergeAcknowledgement([a], [a], []), []);
+  assert.deepEqual(
+    mergeAcknowledgement([{ ...a, text: "Still editing" }], [a], []),
+    [{ ...a, text: "Still editing" }],
+  );
+});

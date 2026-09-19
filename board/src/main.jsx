@@ -5,9 +5,15 @@ import {
   MainMenu,
   convertToExcalidrawElements,
   CaptureUpdateAction,
+  FONT_FAMILY,
 } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
-import { safeViewport, prepareScene, readableViews, camera } from "./layout.mjs";
+import {
+  safeViewport,
+  prepareScene,
+  readableViews,
+  camera,
+} from "./layout.mjs";
 import { changes, mergeAcknowledgement, safeLink } from "./sync.mjs";
 import "./style.css";
 import { startPolling, debounce } from "./polling.mjs";
@@ -20,11 +26,19 @@ history.replaceState(null, "", route);
 const viewId = crypto.randomUUID();
 const fontReady = document.fonts.ready;
 const measureContext = document.createElement("canvas").getContext("2d");
-function measuredScene(scene) {
-  return prepareScene(scene, (text, e) => {
-    measureContext.font = `${e.fontSize}px Helvetica, Arial, sans-serif`;
-    return measureContext.measureText(text).width;
-  });
+function measuredScene(scene, editor, previous) {
+  return prepareScene(
+    scene,
+    (text, e) => {
+      const family =
+        Object.entries(FONT_FAMILY).find(
+          ([, value]) => value === e.fontFamily,
+        )?.[0] || "Helvetica";
+      measureContext.font = `${e.fontSize}px "${family}", Arial, sans-serif`;
+      return measureContext.measureText(text).width;
+    },
+    { rect: editor ? safeViewport(editor) : undefined, previous },
+  );
 }
 const empty = { elements: [], files: {}, versions: {}, revision: 0 };
 const apiRequest = async (path, body, signal) => {
@@ -54,7 +68,7 @@ const apiRequest = async (path, body, signal) => {
 };
 function App() {
   const editor = useRef(null);
-  const [page, setPage] = useState({index:0,total:0});
+  const [page, setPage] = useState({ index: 0, total: 0 });
   const [api, setApi] = useState(null),
     [title, setTitle] = useState("Live Canvas"),
     [status, setStatus] = useState("Local board"),
@@ -79,16 +93,29 @@ function App() {
   const theme = matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
-  const fit = useCallback((index = 0) => {
-    if (!api || !editor.current) return;
-    const rect = safeViewport(editor.current);
-    const views = readableViews(api.getSceneElements(), rect);
-    if (!views.length) return;
-    const chosen = ((index % views.length) + views.length) % views.length;
-    api.updateScene({appState: camera(views[chosen], rect), captureUpdate: CaptureUpdateAction.NEVER});
-    setPage({index:chosen,total:views.length});
-    state.current.fitted = true;
-  }, [api]);
+  const fit = useCallback(
+    (index = null) => {
+      if (!api || !editor.current) return;
+      const rect = safeViewport(editor.current);
+      const views = readableViews(api.getSceneElements(), rect);
+      if (!views.length) return;
+      const anchor = views.findIndex((v) =>
+        v.ids?.includes(state.current.viewAnchor),
+      );
+      if (index === null)
+        index = anchor >= 0 ? anchor : state.current.pageIndex || 0;
+      const chosen = ((index % views.length) + views.length) % views.length;
+      state.current.viewAnchor = views[chosen].ids?.[0];
+      state.current.pageIndex = chosen;
+      api.updateScene({
+        appState: camera(views[chosen], rect),
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      setPage({ index: chosen, total: views.length });
+      state.current.fitted = true;
+    },
+    [api],
+  );
   const showError = useCallback((e) => {
     setError(e.message || "Could not save. Your work remains on this board.");
     setStatus("Unsaved");
@@ -101,7 +128,8 @@ function App() {
       s.hydrating = true;
       api.addFiles(Object.values(scene.files || {}));
       api.updateScene({
-        elements: scene.elements || [],
+        // Excalidraw mutates scene objects during gestures. Never lend it our baseline.
+        elements: structuredClone(scene.elements || []),
         captureUpdate: CaptureUpdateAction.NEVER,
       });
       s.hydrating = false;
@@ -117,7 +145,7 @@ function App() {
         s.timer = setTimeout(save, 600);
         return;
       }
-      const submitted = api.getSceneElementsIncludingDeleted(),
+      const submitted = structuredClone(api.getSceneElementsIncludingDeleted()),
         delta = changes(submitted, s.board.elements);
       if (!delta.length) {
         s.dirty = false;
@@ -130,11 +158,11 @@ function App() {
         const result = await apiRequest("/events", {
           kind: "board",
           elements: delta,
-          rendered: s.board.elements.filter(e => e.customData?.projection && !e.customData?.humanTouched),
+          rendered: s.board.elements.filter((e) => e.customData?.projection),
           files: api.getFiles(),
           base_versions: s.board.versions,
         });
-        result.board = measuredScene(result.board);
+        result.board = measuredScene(result.board, editor.current, s.board);
         const local = api.getSceneElementsIncludingDeleted();
         const merged = mergeAcknowledgement(
           local,
@@ -196,7 +224,11 @@ function App() {
         if (cancelled) return;
         await fontReady;
         if (cancelled) return;
-        const scene = measuredScene(data.board || empty);
+        const scene = measuredScene(
+          data.board || empty,
+          editor.current,
+          s.board,
+        );
         setAdaptive(Boolean(data.adaptive?.enabled));
         setFollow(data.adaptive?.follow !== false);
         setTitle(data.content?.title || "Live Canvas");
@@ -220,7 +252,10 @@ function App() {
           });
           s.ready = true;
           s.dirty = local.length > 0;
-          if (scene.elements.length && !local.length) requestAnimationFrame(() => { if (!cancelled) fit(); });
+          if (scene.elements.length && !local.length)
+            requestAnimationFrame(() => {
+              if (!cancelled) fit();
+            });
           if (s.dirty) void save();
         } else if (
           (scene.revision !== s.board.revision || s.needsHydrate) &&
@@ -232,7 +267,10 @@ function App() {
           s.board = scene;
           s.needsHydrate = false;
           hydrate(scene);
-          if (s.fitted) requestAnimationFrame(() => { if (!cancelled) fit(); });
+          if (s.fitted)
+            requestAnimationFrame(() => {
+              if (!cancelled) fit();
+            });
         }
         setConnected(true);
         if (!s.dirty) setStatus("Saved locally");
@@ -245,20 +283,27 @@ function App() {
       }
     }
     const presence = setInterval(heartbeat, 15000);
-    const viewport = debounce(
-      () => {
-        if (!editor.current) return;
-        const rect = safeViewport(editor.current);
-        if (s.ready && s.fitted) fit();
-        return apiRequest("/events", {
-          kind: "viewport",
-          id: crypto.randomUUID(),
-          width: Math.max(120, Math.round(rect.width)),
-          height: Math.max(120, Math.round(rect.height)),
-        }).catch(() => {});
-      },
-      900,
-    );
+    const viewport = debounce(() => {
+      if (!editor.current) return;
+      const rect = safeViewport(editor.current);
+      if (
+        s.ready &&
+        !s.dirty &&
+        !s.busy &&
+        !s.pointer &&
+        !api.getAppState().editingTextElement
+      ) {
+        s.board = measuredScene(s.board, editor.current, s.board);
+        hydrate(s.board);
+        if (s.fitted) fit();
+      }
+      return apiRequest("/events", {
+        kind: "viewport",
+        id: crypto.randomUUID(),
+        width: Math.max(120, Math.round(rect.width)),
+        height: Math.max(120, Math.round(rect.height)),
+      }).catch(() => {});
+    }, 900);
     (async () => {
       try {
         if (auth) {
@@ -392,16 +437,30 @@ function App() {
         </div>
         <div className="board-actions">
           <button
-            onClick={() => fit()}
+            onClick={() => fit(0)}
             title="Fit readable content inside the available board area"
           >
             Fit
           </button>
-          {page.total > 1 && <nav className="board-pages" aria-label="Readable board views">
-            <button onClick={() => fit(page.index - 1)} aria-label="Previous view">‹</button>
-            <span>{page.index + 1}/{page.total}</span>
-            <button onClick={() => fit(page.index + 1)} aria-label="Next view">›</button>
-          </nav>}
+          {page.total > 1 && (
+            <nav className="board-pages" aria-label="Readable board views">
+              <button
+                onClick={() => fit(page.index - 1)}
+                aria-label="Previous view"
+              >
+                ‹
+              </button>
+              <span>
+                {page.index + 1}/{page.total}
+              </span>
+              <button
+                onClick={() => fit(page.index + 1)}
+                aria-label="Next view"
+              >
+                ›
+              </button>
+            </nav>
+          )}
           <button
             aria-pressed={adaptive && follow}
             disabled={!adaptive}
@@ -423,7 +482,13 @@ function App() {
           </button>
         </div>
       </header>
-      <div className="editor" ref={editor} onWheel={() => {state.current.fitted = false;}}>
+      <div
+        className="editor"
+        ref={editor}
+        onWheel={() => {
+          state.current.fitted = false;
+        }}
+      >
         <Excalidraw
           excalidrawAPI={setApi}
           initialData={{

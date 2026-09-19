@@ -113,16 +113,27 @@ def update(root,thread,payload,actor='human'):
         scene=state.setdefault('board',{'elements':[],'files':{},'versions':{},'revision':0})
         current={e['id']:e for e in scene['elements']}
         changed=[]
-        incoming_ids={e['id'] for e in incoming}
+        measured_baseline={}
         for measured in rendered:
             eid=measured['id'];old=current.get(eid)
-            if eid in incoming_ids or not old or not old.get('customData',{}).get('projection') or old.get('customData',{}).get('humanTouched'):continue
+            if not old or not old.get('customData',{}).get('projection'):continue
+            meta=old.get('customData',{})
+            if meta.get('humanTouched') and 'humanFields' not in meta:continue
             # Accept derived geometry and line breaks only, never different words or ownership.
             if re.sub(r'\s','',measured.get('text','')) != re.sub(r'\s','',old.get('text','')):raise ValueError('Measured layout cannot change content')
             geometry={k:measured[k] for k in ('x','y','width','height','text','points') if k in measured}
+            # Preserve manually placed geometry; wrapping unchanged words is still derived.
+            for field in set(meta.get('humanFields',[])) & {'x','y','width','height','points'}:
+                geometry.pop(field,None)
+            measured_baseline[eid]={**old,**geometry}
             if all(old.get(k)==v for k,v in geometry.items()):continue
             if bases.get(eid,0)!=scene['versions'].get(eid,0):raise Conflict('The board changed while its layout was measured')
             current[eid]={**old,**geometry,'version':old.get('version',1)+1};changed.append(eid)
+        moved_shapes={e['id'] for e in incoming if e['type'] in {'rectangle','ellipse','diamond'} and
+                      any(e.get(k)!=(measured_baseline.get(e['id']) or current.get(e['id'],{})).get(k) for k in ('x','y','width','height','angle'))}
+        derived_edges={e['id'] for e in incoming if e['type']=='arrow' and
+                       any((e.get(k) or {}).get('elementId') in moved_shapes for k in ('startBinding','endBinding')) and
+                       all((e.get(k) or {}).get('elementId')==(current.get(e['id'],{}).get(k) or {}).get('elementId') for k in ('startBinding','endBinding'))}
         for element in incoming:
             eid=element['id'];old=current.get(eid)
             # Ignore our own server-owned metadata when comparing a round trip.
@@ -133,16 +144,31 @@ def update(root,thread,payload,actor='human'):
             prior=(old or {}).get('customData',{})
             # Browsers cannot reset the ownership/protection of generated content.
             e['customData']={**e.get('customData',{}),**prior,'lastActor':actor}
-            if actor=='human':e['customData']['humanTouched']=True
+            if actor=='human':
+                baseline=measured_baseline.get(eid,old or {})
+                fields={k for k in comparable(e) if baseline.get(k)!=e.get(k)}
+                # Bound-arrow bookkeeping and automatic text metrics are not placement intent.
+                fields.discard('boundElements')
+                if (eid in derived_edges or e.get('containerId') in derived_edges) and fields <= {
+                        'x','y','width','height','points','startBinding','endBinding','lastCommittedPoint'}:
+                    fields=set()  # Native bindings moved this connector with its shape.
+                if fields.intersection({'text','originalText','fontSize','fontFamily','lineHeight'}):
+                    fields.difference_update({'width','height','baseline'})
+                    if fields.intersection({'text','originalText'}):fields.update({'text','originalText'})
+                if fields or not old:
+                    e['customData']['humanTouched']=True
+                    e['customData']['humanFields']=sorted(set(prior.get('humanFields',[]))|fields)
+                if 'text' in fields and e.get('originalText')==baseline.get('originalText'):
+                    e['originalText']=e['text']
             current[eid]=e;changed.append(eid)
         if not changed and all(scene.get('files',{}).get(k)==v for k,v in files.items()):return False
         for fid,f in files.items():
             if fid in scene.get('files',{}) and scene['files'][fid].get('dataURL')!=f.get('dataURL'):raise Conflict('An image changed elsewhere')
         combined_files={**scene.get('files',{}),**files};validate(list(current.values()),combined_files)
         scene['elements']=list(current.values());scene['files']=combined_files
-        for eid in changed:scene['versions'][eid]=scene['versions'].get(eid,0)+1
+        for eid in set(changed):scene['versions'][eid]=scene['versions'].get(eid,0)+1
         scene['revision']+=1;scene['last_actor']=actor
-        if actor=='human':
+        if actor=='human' and incoming:
             scene['human_revision']=scene.get('human_revision',0)+1
         state.pop('presentation',None)
     state=canvas.mutate(root,thread,apply)
@@ -153,7 +179,9 @@ def context(state):
     result=[]
     for e in state.get('board',{}).get('elements',[]):
         if e.get('isDeleted'):continue
-        result.append({k:e[k] for k in ('id','type','text','x','y','width','height') if k in e})
+        item={k:e[k] for k in ('id','type','text','x','y','width','height') if k in e}
+        item.update({k:v for k,v in e.get('customData',{}).items() if k in {'nodeId','role','relation','humanFields','pinned'}})
+        result.append(item)
     return result
 
 

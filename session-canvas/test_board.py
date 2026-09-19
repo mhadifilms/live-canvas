@@ -122,12 +122,18 @@ class LayoutRegressionTests(unittest.TestCase):
         cards=[e for e in s['board']['elements'] if e['type']=='rectangle']
         self.assertEqual(cards[0]['y'],cards[1]['y'])
         self.assertEqual(cards[1]['x']-(cards[0]['x']+cards[0]['width']),24)
-    def test_resize_reflows_but_preserves_human_edited_section(self):
+    def test_resize_preserves_only_the_human_edited_node(self):
         s=self.state();board.sync_content(s)
         e=next(e for e in s['board']['elements'] if e['type']=='text');e['customData']['humanTouched']=True
         before=copy.deepcopy(s['board']['elements']);s['board']['human_revision']=1
         s['collaboration']['viewport']={'width':320,'height':480};board.sync_content(s)
-        self.assertEqual(before,s['board']['elements'])
+        after={v['id']:v for v in s['board']['elements']}
+        self.assertEqual(e,after[e['id']])
+        for element in before:
+            if element['customData'].get('nodeId') == e['customData']['nodeId']:
+                self.assertEqual(element['x'],after[element['id']]['x'])
+                self.assertEqual(element['y'],after[element['id']]['y'])
+        self.assertNotEqual(before,s['board']['elements'])
     def test_jev_representation_questions_are_bounded_and_include_screen_constraints(self):
         s=self.state();board.sync_content(s);body,mapping=jev.build_request(s,{'rich_context':True});request=json.loads(body)
         self.assertIn('representation_section_0',request['questions'])

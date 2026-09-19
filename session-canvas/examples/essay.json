@@ -23,12 +23,40 @@
       "blocks": [
         {
           "id": "steps",
-          "type": "list",
-          "ordered": true,
-          "items": [
-            "Define what a shared public resource makes possible.",
-            "Test the claim with verified examples of access to space, information, and support.",
-            "Answer the strongest competing use of the same public funds."
+          "type": "graph",
+          "nodes": [
+            {
+              "id": "thesis",
+              "role": "claim",
+              "label": "Libraries provide shared public resources",
+              "detail": "Working thesis: still needs verified evidence."
+            },
+            {
+              "id": "access",
+              "role": "question",
+              "label": "Who gains access?",
+              "detail": "Find verified examples of space, information and support."
+            },
+            {
+              "id": "funding",
+              "role": "question",
+              "label": "What else could funding support?",
+              "detail": "Identify the strongest credible counterargument."
+            }
+          ],
+          "edges": [
+            {
+              "id": "access-question",
+              "from": "thesis",
+              "to": "access",
+              "relation": "connects"
+            },
+            {
+              "id": "funding-question",
+              "from": "thesis",
+              "to": "funding",
+              "relation": "connects"
+            }
           ]
         }
       ]

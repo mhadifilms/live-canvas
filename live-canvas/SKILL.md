@@ -31,7 +31,7 @@ Use `status --summary` at meaningful milestones. It includes a bounded feedback 
 
 When authored work would be better than a mirrored reply, write concise stable-ID sections: drafts, evidence, questions, ideas, edit beats, comparisons, diagrams. Do not fill the canvas with generic status reports unless that is the task. Prioritize spatial explanations: connected steps for explicit workflows, side-by-side comparisons, and grouped concepts or ideas. Use timeline blocks for ordered steps; do not invent causal arrows between unrelated facts. Keep each node concise and put detail into separate nearby nodes instead of one large prose wall. Default board text uses a clean sans-serif font; do not use handwritten typography unless the user specifically requests it. Use at most three initially useful sections, with short summaries. The shared board/Jev handles arrangement and emphasis. Preserve the user's notes and annotations; authored updates cannot delete them.
 
-Run `update --file <small-json-path>`. Supported blocks are `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; see the runtime README for schema. Prefer deltas for the same context:
+Run `update --file <small-json-path>`. Supported blocks are `graph`, `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; see the runtime README for schema. Prefer deltas for the same context:
 
 ```json
 {"upsert_sections":[{"id":"evidence","title":"Evidence","blocks":[{"id":"main","type":"text","text":"Relevant evidence."}]}],"remove_sections":["obsolete"]}
@@ -41,7 +41,9 @@ Don't mix deltas with `sections`. A new context clears authored work, not user a
 
 ## Direct board work
 
-The canvas is a shared Excalidraw board. Use text, arrows, shapes and freehand elements in that scene rather than opening another document or sketch tool. Users can edit agent text directly. Section updates project to stable objects but never overwrite human-touched objects, including deleted ones.
+The canvas is a shared Excalidraw board. Use text, arrows, shapes and freehand elements in that scene rather than opening another document or sketch tool. Users can edit agent text directly. Prefer `graph` blocks for spatial work: nodes have stable `id`, `label`, optional `detail`, `role`, and HTTP(S) `source`; edges have stable `id`, `from`, `to`, and `relation`. Reuse IDs when wording changes. Roles: concept, question, claim, evidence, task, decision, reference, event, note. Relations: connects, supports, challenges, depends_on, contains, precedes, answers. Author only relationships supported by the work; Jev selects presentation, never invents edges. Keep prose as text blocks when relationships are not useful.
+
+Section updates project to stable native objects. Human wording, styling, movement, and deletion are protected at the edited property; editing a node does not freeze its neighbors. Moved nodes stay fixed, while corrected text can still wrap and move with its node. Legacy human-edited sections from older installations remain protected conservatively.
 
 For intentional object edits, read the current `state_file` returned by status. Submit `board --file <json>` with `elements` (changed full Excalidraw elements), `base_versions` (the current `board.versions` map), and optional image `files`. Keep stable IDs. Mark deletions with `isDeleted: true`; omission does not delete. A stale base version fails rather than overwriting another writer. Read current state and reconcile before retrying. This path is for deliberate shared-object editing; ordinary section updates remain smaller.
 

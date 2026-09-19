@@ -181,10 +181,13 @@ def validate_sections(sections):
             block_ids.add(block["id"])
             kind = block.get("type")
             allowed = {"text": {"text"}, "list": {"items", "ordered", "selectable"}, "checklist": {"items"},
-                       "table": {"columns", "rows"}, "reveal": {"items"}, "timeline": {"items"}}
+                       "table": {"columns", "rows"}, "reveal": {"items"}, "timeline": {"items"}, "graph": {"nodes", "edges"}}
             require(isinstance(kind, str) and kind in allowed, "unsupported block type")
             require(not set(block) - ({"id", "type"} | allowed[kind]), "unknown block field")
-            if kind == "text":
+            if kind == "graph":
+                from board_model import validate_graph
+                validate_graph(block)
+            elif kind == "text":
                 require(isinstance(block.get("text"), str), "text block needs text")
             elif kind == "list":
                 require(strings(block.get("items")), "list needs string items")
@@ -789,6 +792,9 @@ def status_summary(state, limit=SUMMARY_MAX):
                 preview = "; ".join((v if isinstance(v, str) else v.get("text", "")) for v in values[:3])
             elif kind == "table":
                 preview = " | ".join(str(v) for v in (block.get("columns") or [])[:4])
+            elif kind == "graph":
+                preview = "; ".join(v.get("label", "") for v in (block.get("nodes") or [])[:3])
+                digest["truncated"] |= len(block.get("nodes") or []) > 3
             elif kind == "reveal":
                 preview = "; ".join(v.get("prompt", "") for v in (block.get("items") or [])[:3])
             else:

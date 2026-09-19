@@ -22,7 +22,7 @@ jobs:
         run: python -m unittest discover -s session-canvas -v
       - name: Check viewer helpers with Node's built-in test runner
         if: matrix.python-version == '3.12'
-        run: node --test session-canvas/test_viewer.mjs
+        run: node --test session-canvas/test_viewer.mjs board/src/*.test.mjs
       - name: Build bundled shared-board editor
         if: matrix.python-version == '3.12'
         run: |

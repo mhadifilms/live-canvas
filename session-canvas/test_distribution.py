@@ -10,6 +10,7 @@ class DistributionTests(unittest.TestCase):
             'README.md', 'LICENSE', '.github/workflows/tests.yml',
             'live-canvas/SKILL.md', 'live-canvas/scripts/live_canvas.py',
             'session-canvas/canvas.py', 'session-canvas/index.html',
+            'session-canvas/board_model.py', 'session-canvas/board_layout.py',
             'session-canvas/client_hooks.py', 'session-canvas/install_clients.py',
             'session-canvas/auto_open.py', 'session-canvas/typesafe_presentation.py',
             'session-canvas/README.md', 'session-canvas/DESIGN.md',

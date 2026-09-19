@@ -31,7 +31,7 @@ Host integrations use one board per exact conversation identity and check for an
 
 Fit measures the usable editor area, including desktop/mobile toolbars and padding. Automatic fitting keeps text at least 16 CSS pixels on screen. Larger boards have previous/next readable views; manual zoom and pan remain available. New text uses a clean sans-serif font. Generated text wraps using measured font widths, and compact native cards use their actual text heights.
 
-Jev chooses focus, importance, grouping, and whether source material describes a connected sequence or independent ideas. It receives the available viewport and readability constraints. Pixel measurements and resize fitting run locally; they do not require model calls. Semantic decisions remain debounced, cached and subject to the existing configurable daily budget. Human-edited sections and manually authored objects stay fixed, so automatic packing may leave space around that protected work.
+Jev chooses focus, importance, spacing, and whether to show independent ideas or existing relationships as a layered map. Graph blocks carry stable nodes, roles, sources, and typed edges; the renderer never invents relationships. It receives the available viewport and readability constraints. Live geometry is measured and arranged in the browser; the server supplies an offline fallback. Resize reflow runs locally, and Fit preserves the current readable view during incoming updates. Turning adaptation off stops local rearrangement as well as Jev changes. Semantic decisions remain debounced, cached and subject to the existing configurable daily budget. Text corrections stay with their node while neighboring content continues adapting. Manually moved nodes stay fixed, and automatic packing avoids them. Legacy human-edited sections remain fixed during migration.
 
 ## Work together
 
@@ -56,7 +56,7 @@ The initial private URL exchanges its credential for an HttpOnly, SameSite cooki
 
 ## Optional Jev / TypeSafe
 
-Jev judges priorities, grouping, spacing, restrained emphasis colors, and suitable text style. It arranges only untouched agent objects; anything you edit stays put. Decisions run in the local background service after meaningful changes settle, with caching and shared daily caps. Pointer motion, refreshes, and connection heartbeats do not trigger decisions. There are no extra main-agent turns.
+Jev judges priorities, structure, spacing, and restrained emphasis colors. Generated typography stays sans-serif. Human wording and style changes survive updates; moving a node protects its placement without freezing the surrounding section. Decisions run in the local background service after meaningful changes settle, with caching and shared daily caps. Pointer motion, refreshes, and connection heartbeats do not trigger decisions. There are no extra main-agent turns.
 
 Setup explains what leaves your device. Basic mode sends bounded authored excerpts. Enhanced context additionally sends bounded visible chat text, board text and geometry, selections, viewport size, and text-file excerpts. Images, binary attachments, tool results, and reasoning are never sent to Jev. A drawing is represented by its type/bounds, not visually interpreted.
 
