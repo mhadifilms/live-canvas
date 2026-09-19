@@ -293,8 +293,8 @@ class AutoInstallTests(unittest.TestCase):
             self.assertEqual(result, 0)
             item = json.loads(output.getvalue())["clients"][0]
             self.assertEqual(item["readiness"], "requires_host_verification")
-            self.assertIn("first-turn", item["next_step"])
-            self.assertNotIn("/hooks", item["next_step"])
+            self.assertIn("/hooks", item["next_step"])
+            self.assertIn("trust", item["next_step"])
 
 
 if __name__ == "__main__":

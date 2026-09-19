@@ -1,12 +1,74 @@
-# Runtime reference
+# Session canvas
 
-The current viewer is an editable Excalidraw board. See the [main guide](../README.md) for installation, storage, privacy and controls. Earlier section-based content remains accepted and projects to editable text objects. Legacy HTML visuals and document-specific recall/checklist widgets are retained in state but are no longer active viewer controls.
+A live, local side panel for Codex, Claude Code, and Cursor sessions. Python 3.9+ standard library only; no packages, build step, or Herdr dependency. Local-only mode needs no remote service; TypeSafe focus is optional. The browser reads state once per second using conditional requests; Codex transcript updates are followed every 0.8 seconds. Hidden browser tabs poll every five seconds.
 
-## Shared scene API
+## Install and automatically open new chats
 
-`board --thread <exact-id> --file changes.json` accepts `{ "elements": [...], "base_versions": {...}, "files": {...} }`. Elements use the Excalidraw scene format; IDs and versions come from `state.json` under `board`. Submit only changed objects. An absent object is preserved; delete with `isDeleted: true`. A version conflict preserves saved state and returns failure. HTTP uses the same merge through authenticated `POST /<task>/events` with `kind: "board"`.
+First run `python3 setup.py` from this directory for guided client selection, optional API key setup, and configurable limits. See [guided setup and configuration](#guided-setup-and-configuration) for later changes.
 
-Limits: 2,000 objects, 8 MiB scene JSON, 6 MiB embedded image data, 2 MiB per non-image attachment and 20 MiB attachment storage per task. These bounds prevent unbounded local requests. The main-agent digest remains 4,000 characters. The static HTML snapshot is a simplified SVG rendering; download the `.excalidraw` file for full fidelity.
+For explicit low-level installation and diagnostics:
+
+```sh
+python3 install_clients.py dry-run
+python3 install_clients.py install
+python3 install_clients.py check
+```
+
+The default installs Codex, Claude Code, and Cursor. Select one with `--client codex|claude|cursor`; `--client both` retains the earlier Claude Code + Cursor selection. Skill links are named `live-canvas`; existing `canvas` skills are never modified. The installer merges `~/.codex/hooks.json`, `~/.claude/settings.json`, and version-1 `~/.cursor/hooks.json`, preserving unrelated hooks and settings. Codex uses `CODEX_HOME` when set for the real user home. Its hooks feature must be enabled separately: `codex features enable hooks`. The installer never edits `config.toml`.
+
+Start a new foreground chat after installation; restart the host if it caches hooks. Automatic opening is on by default:
+
+- **Codex:** SessionStart supplies the exact session prefix and a short instruction to open the right-hand browser panel on the first user turn. The hook cannot directly open the native panel on a blank-chat click.
+- **Cursor:** the first user turn opens the built-in browser when exposed by the host, otherwise the OS browser.
+- **Claude Code:** a detached local worker starts the shared server and dispatches the OS browser at startup, without a model call. macOS uses `open`; Linux requires a graphical session and `xdg-open`.
+
+`source: startup` and `source: resume` permit Codex/Claude automatic opening when no prior dispatch is acknowledged. Cursor sessionStart accepts absent source as startup. Clear, compact, and fork never trigger opening. Cursor's documented `is_background_agent`, plus explicit background/subagent/noninteractive indicators supplied by other hosts, suppress opening. Absence of those indicators is not proof that a host is interactive. A main custom `agent_type` is not treated as a subagent.
+
+Session identities are exact: Codex retains its raw task ID; Claude uses `claude:<session_id>`; Cursor uses `cursor:<conversation_id>` (sessionStart can fall back to `session_id`). No IDs are inferred from a working directory. SessionStart injects the command prefix, and Cursor also supplies environment values when the host supports them.
+
+Disable or re-enable automatic opening for the shared state directory:
+
+```sh
+python3 canvas.py auto-open off
+python3 canvas.py auto-open on
+python3 canvas.py auto-open status
+```
+
+An explicit request to use/show the canvas must show its view even if its content is already active: run `start`, then `auto-open claim --manual`, dispatch the start URL only when the claim permits it, and acknowledge completed dispatch with `auto-open opened --claim <claim>`. Manual claims serialize with automatic claims and require an enabled session. A queued host result stays unacknowledged; release its claim and explain that the target task must be shown. Inspect the exact browser/tab when host tools allow it. The runtime reports `opening.visibility: unverified`: neither enabled state nor an acknowledgement proves current UI visibility.
+
+The off switch affects automatic opening; explicit manual `start` still works. `stop --thread <exact-key>` disables a session, and startup hooks do not re-enable it. Claims serialize automatic opening attempts across repeated hooks and concurrent turns. Native opening follows `auto-open claim`, `start --auto-claim <claim>`, browser tool success, then `auto-open opened --claim <claim>`. Failed attempts use `auto-open release --claim <claim>`; interrupted claims expire after five minutes. A crash between UI opening and acknowledgement can result in a repeated opening on retry. OS dispatch success is not proof that a browser rendered the page.
+
+Startup and resume can recover an opening that has no acknowledgement; they preserve explicit stops and automatic-opening opt-out. `status --summary` also reports opening state so an ordinary user turn can recover a missing hook or failed attempt.
+
+The hooks do not retry themselves or create follow-up model turns. A failed opening can be retried on a later startup or manually; errors release the claim when possible. The Claude worker bounds shared-server startup to ten seconds and OS dispatch to three seconds, outside the two-second hook process. Automatic observations still make zero model calls. Useful authored sections require concise updates at milestones and before the assistant's final reply.
+
+Claude hooks record generic activity and `Stop.last_assistant_message`; Cursor records generic activity and `afterAgentResponse.text`. Responses arrive at message boundaries rather than token streaming. These adapters never read prompts, tool inputs/results, thoughts, or transcripts. Codex registers its transcript through the launcher as before. Stopped sessions ignore observations. Malformed input and state contention fail open.
+
+### Reversible configuration
+
+Keep this checkout in place because hook commands and skill links reference it. Changed files are backed up privately in each client's `.live-canvas-backups/`, with ownership recorded in `.live-canvas-install.json`. Known schema-1 manifests upgrade in place, preserving previous backup and skill-link ownership. Unowned or edited hooks, incompatible manifests, conflicting skills, symlinked configs, and unsupported versions are refused. To move the bundle or change interpreters, uninstall using the original installer first.
+
+```sh
+python3 install_clients.py uninstall
+```
+
+Uninstall removes only unchanged owned hook entries and links it created, preserving later unrelated edits, earlier skill links, backups, and canvas data. It does not replace current settings with an old backup. `dry-run` and `check` are read-only; check validates installation files, not host hook loading or the Codex feature flag. `--user-home /temporary/directory` targets fixture configurations. All clients are preflighted before writes, but multiple files are not one filesystem transaction; interrupted installs can be inspected with check and retried or uninstalled.
+
+Keep `SESSION_CANVAS_HOME` consistent between hook processes and manual commands. SessionStart's injected prefix includes the actual state directory. Ordinary Claude chat has no native panel integration, and remote environments need access to their own local filesystem and loopback viewer.
+
+References: [Codex hooks](https://developers.openai.com/es-419/docs/hooks), [Claude Code hooks](https://code.claude.com/docs/en/hooks), [Claude Code skills](https://code.claude.com/docs/en/skills), [Cursor hooks](https://cursor.com/docs/hooks), [Cursor skills](https://cursor.com/docs/skills).
+
+## Open a canvas
+
+From this directory:
+
+```sh
+python3 canvas.py start --thread YOUR_THREAD_ID --title "Your task" --transcript /absolute/path/to/task.jsonl
+```
+
+Open the returned `url` in the Codex browser panel. `CODEX_THREAD_ID` supplies the thread when `--thread` is omitted. Missing task identity is an error; there is no shared anonymous canvas. An explicit transcript path is optional. Without it, the panel receives CLI updates and enabled hook/feed events. The sibling `live-canvas` skill provides automatic transcript discovery and panel-opening instructions.
+
+Persistent private state defaults to `.state` beside the runtime. Set `SESSION_CANVAS_HOME` or pass `--home /absolute/path` **before** the subcommand to use another location. Files are created with mode `0600`, directories with `0700`. Use the same home on every invocation. The server binds only `127.0.0.1` and may require local-network permission from the Codex sandbox.
 
 ## Write a curated update
 
@@ -35,7 +97,9 @@ For an existing context, update only the sections that changed:
 
 An upsert replaces a matching section in place and appends a new section. Removals happen first; the resulting full section list is validated atomically. Do not combine section deltas with a whole `sections` replacement. Use a whole replacement for a new context or a real structural rewrite.
 
-When no authored sections exist, the latest final reply becomes editable board text. The assistant feed remains bounded and internal memory-citation blocks are removed. Legacy `visual_html` remains stored but is not rendered in the board; use Excalidraw objects for diagrams and visual notes.
+The latest assistant final response or commentary takes display precedence when it is newer than the curated update. Long content is expandable. The assistant feed retains the last 40 entries. Known internal memory-citation blocks are removed; other text is displayed literally and cannot execute HTML.
+
+`visual_html` is intentionally a separate authoring surface: HTML and SVG render in an empty-sandbox iframe. Scripts, network requests, forms, embedded external content, and parent access are blocked. Inline CSS and data images are permitted. This supports diagrams and static visual notes, not interactive JavaScript applications. The outer viewer also has a restrictive content security policy.
 
 ## Adaptive content for any task
 
@@ -86,12 +150,96 @@ The viewer accepts a new polling ETag only after parsing and rendering succeed, 
 
 Existing flat updates remain valid. Schema-1 states gain default context/sections on the next mutation while preserving previous content. History retains the original snapshots.
 
-## Lifecycle
+## Automatic sources
 
-`start` enables a task; `stop` pauses it without deleting data; `shutdown` stops the shared service. Use exact session IDs, never a working-directory-derived identity. Explicit readable URLs stay stable after title changes. The launcher automatically registers the local Codex transcript when it can resolve the exact session.
+Registered transcripts must begin with `session_meta` matching the exact task ID. The follower reads only that path, persists its byte offset, handles partial append lines, deduplicates message IDs, and resumes after restart. It reads assistant `response_item` messages whose phase is `commentary`, `final_answer`, or `final`, and only their `output_text`. It excludes user/developer/system text, reasoning, inter-agent messages, tool arguments, and tool results. Turn and tool signals convey observed activity, not inferred progress. A turn completion leaves the follower running for the next turn. Existing transcript history is processed on registration; large transcripts can take several polling cycles to catch up.
 
-`status --summary` returns a bounded digest including human board edits. The full `state_file` is available for deliberate object edits. Visible replies and prompts are captured locally at message boundaries; no tool results or private reasoning enter the board. Host adapters do not create follow-up agent turns.
+An external integration may send explicit assistant text:
 
-## Security and model configuration
+```sh
+python3 canvas.py feed --thread YOUR_THREAD_ID <<'JSON'
+{"kind":"commentary","text":"The visible assistant update.","source":"My integration","event_id":"unique-message-id"}
+JSON
+```
 
-Refer to the [main guide](../README.md#optional-jev--typesafe) for Jev consent, key storage, limits and enhanced context. The service enforces task credentials and same-origin writes. Scene saves are atomic and version checked. Static snapshots and transcript references remain private local files. No API key is sent to the browser.
+Feed kinds are `commentary`, `final`, and `activity`. Feed writes are ignored for tasks that have not been enabled with `start`, or have been disabled with `stop`.
+
+Hooks can call:
+
+```sh
+python3 canvas.py hook --event PostToolUse
+```
+
+The hook reads JSON on stdin. It resolves task identity from `--thread`, then `CODEX_THREAD_ID`, then input `thread_id` or `session_id`. `--event` overrides `hook_event_name` / `event_name`. Recognized events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`; recognition does not mean a given Codex host supports that event. Configure only events supported by your host. Missing identity, disabled tasks, unrecognized events, contention, and input errors fail open with exit zero. Hook ingestion excludes input/output bodies and does not start servers or create state for unknown tasks. No global hooks are installed by this runtime.
+
+## Lifecycle and freshness
+
+```sh
+python3 canvas.py status --thread YOUR_THREAD_ID
+python3 canvas.py stop --thread YOUR_THREAD_ID
+python3 canvas.py start --thread YOUR_THREAD_ID
+python3 canvas.py shutdown
+```
+
+`stop` disables automatic ingestion for one task while retaining its view and data. `start` resumes it. `shutdown` stops the shared server for all tasks without deleting state. A restart tries to reuse its private URL token and port; if that port is occupied, open the new returned URL. `status` and `update` report an unverified health state with the recorded URL if the environment blocks loopback probing; they do not claim that a blocked probe means the server is stopped. `start` refuses to launch a duplicate when this health check is blocked.
+
+For agent inspection, begin with `python3 canvas.py status --thread YOUR_THREAD_ID --summary`. The result is a deterministic digest capped at 4,000 serialized characters and includes the `state_file` path, context, revision, current/outcome previews, and section IDs, titles, block counts/types, and short previews. It never includes feed, history, or `visual_html`; `summary.truncated` tells you when material was omitted. Read the state file only for a targeted follow-up. Context and thread previews may be clipped with `summary.truncated: true`; do not use clipped previews as command identities. Top-level task identity and `state_file` are preserved exactly when they fit; oversized metadata is `null` with `metadata_truncated: true`, rather than a misleading partial identity or path. Use your known session command when metadata is omitted.
+
+The compact viewer retains the latest authored content while automatic events arrive. Source and activity details remain available in state and status output. Quiet periods do not imply completion, and observations never invent progress.
+
+Canvas content cannot be changed through HTTP. The only accepted POST is an empty, same-origin `/<route>/_auth` request carrying a task capability; it sets a host-only HttpOnly, SameSite=Strict cookie scoped to that task route. All other writes remain rejected. The generic viewer shell has no private content; state requires the matching task cookie. New links carry a per-task HMAC credential in `#auth=...`, which never enters the HTTP request path and is removed from the address immediately, before authentication. Cookies last 30 days; open the original private link or get a fresh `start` URL if authorization expires. The cookie uses local HTTP, so it is not marked Secure. Arbitrary files are never served. Exact Host/Origin checks allow only `canvas.localhost`, `localhost`, and `127.0.0.1` on the active port; foreign origins and cross-site requests are rejected. Initial capability links are private and remain bearer credentials, even after the browser cleans its address. This is not a boundary against other processes running as the same OS user. Curated and automatic writes retain file locks and atomic replacement.
+
+### Readable local addresses
+
+A task's first opening reserves a route from its context label or title, for example `http://canvas.localhost:60839/quiz-review`. It remains stable across title changes and server restarts; duplicate names get a task discriminator. Tasks opened before authored content use the initial session title. The server still binds only `127.0.0.1`; no DNS, hosts-file, proxy, or hosted service is configured. Chromium-based panels support the branded localhost alias. The detached external-browser startup helper defaults to ordinary `localhost` for broader resolver compatibility. Override either with `LIVE_CANVAS_HOST=localhost` or `LIVE_CANVAS_HOST=127.0.0.1` on the command generating the URL; only those aliases and `canvas.localhost` are accepted.
+
+Existing `/v/<capability>/<task>/` links continue to work and exchange for the task cookie on their existing origin, then replace the visible URL with the readable route. The old shared capability retains its existing authority; newly generated task capabilities cannot authorize another task. Clean URLs reload with their cookie, but sharing a clean URL does not grant access to a fresh browser. Cookies and local checklist/study choices are origin-bound: changing hostname or port requires a bootstrap URL and does not copy browser choices. Use the old link to retain the old origin's choices. Restart the shared server with `shutdown` then `start` after upgrading the runtime.
+
+## Verification
+
+From the project root:
+
+```sh
+python3 -m unittest discover -s session-canvas -v
+node --test session-canvas/test_viewer.mjs
+```
+
+Tests cover per-task isolation, concurrent writes, automatic/curated separation, disabled hooks, deduplication, transcript identity/privacy, partial-line recovery, private state permissions, endpoint restrictions, origin checks, task-scoped bootstrap cookies, clean routes, legacy capability compatibility, read-only content HTTP, legacy migration, context switching, explicit replacement, schema validation, and all six fixtures. Node helper tests cover fragment removal before authentication, clean reloads and authentication failures, safe links/text, local persistence and invalidation, denied storage, and bounded caches without extra dependencies. Browser verification must separately confirm keyboard and screen-reader names, native checkbox behavior, recall/shortlist persistence through polling and reload, changed-answer reset, clipboard success/failure, narrow light/dark layouts, bounded activity/history, authored freshness, and sandboxed visuals.
+
+## Optional TypeSafe presentation
+
+Local mode remains the default. `python3 canvas.py adaptive on` records an opt-in in the same private `preferences.json` used for automatic opening, preserving other preferences. `adaptive off` removes derived focus immediately and stops future remote judgments; in-flight responses cannot restore focus afterward. Use guided setup to save a private local key, or set `TYPESAFE_API_KEY` in the environment that launches the shared server. Task state, browser responses, and logs never contain the key. Saved configuration is picked up by the running worker; an existing server needs restarting to inherit a newly supplied environment key. `LIVE_CANVAS_TYPESAFE=1` or `0` overrides the saved preference; status explicitly reports that override.
+
+`adaptive status` is read-only and never calls the provider. It reports effective configuration, whether the current command has a key, the last recorded server configuration/key-presence observation, daily budget usage, and outcome counts. The recorded server observation is not proof that the server is still running. `adaptive retry` lets enabled tasks retry failed judgments without changing authored content or resetting budgets. It preserves successful/uncertain cached decisions and live pending reservations; abandoned reservations expire after 30 seconds. A new authored change is the normal trigger. Refreshes, assistant feed/transcript events, and clock rollover do not trigger inference. After a budget reset or a transient failure, use `adaptive retry` or restart the server when another attempt is wanted.
+
+The existing server hosts one sequential selector worker; there is no additional service. After three quiet seconds following a meaningful authored change, it asks one [TypeSafe Choice](https://docs.typesafe.ai/primitives/choice) over at most six existing section candidates plus an unchanged option. The fixed [HTTP API](https://docs.typesafe.ai/api) endpoint is `https://api.typesafe.ai/v1/systemone`, using `jev-latest`. The request includes the authored title, context label/description, current work, outcome, and short candidate excerpts. It excludes prompts, feed, tool output, reasoning, history, session IDs, visual HTML, and browser choices. Treat authored excerpts as information disclosed to TypeSafe when opting in. Candidate excerpts can be incomplete; later sections outside the first six cannot be selected as the focus.
+
+Every encoded request is capped at 6,000 UTF-8 bytes. Defaults are 10,000 calls / 60,000,000 encoded input bytes per UTC day across all tasks in this state directory. Configure saved limits through `setup.py configure --daily-calls N` and optional `--daily-bytes N`. `LIVE_CANVAS_TYPESAFE_DAILY_CALLS` (0–10000) and `LIVE_CANVAS_TYPESAFE_DAILY_BYTES` (0–60000000) in the server environment override saved values. The default byte allowance accommodates 10,000 maximum-size requests. These are input-byte limits, not tokenizer counts or a billing guarantee. Atomic persistent reservations count failed and interrupted requests before networking; retries consume another reservation. Decisions are cached by the full relevant authored-input/context/policy hash, capped at 128 entries. API requests use a four-second socket timeout, a 32 KiB response limit, and refuse redirects. TLS verification stays enabled. On macOS, a Python installation with no configured default CA paths uses `/etc/ssl/cert.pem` when available; explicit `SSL_CERT_FILE`/`SSL_CERT_DIR` overrides are always respected. Failures retain normal local presentation and expose a short status, never raw provider responses or exceptions.
+
+The model returns only a typed judgment. Code checks the option against its own section IDs and the complete probability map. A focus requires confidence ≥0.75 and selected probability ≥0.65; these conservative starting thresholds are not evidence of correctness and should be evaluated for your tasks. Low certainty, invalid output, missing configuration, network failure, and budget exhaustion leave the authored layout. A result is committed only if its full source hash is still current and remote selection remains enabled. Derived `presentation` data is separate from authored content, edit history, and authored freshness.
+
+The viewer moves the chosen section first and keeps the other sections accessible through disclosures. **Follow suggested focus** in Settings is a browser-only layout preference; it does not stop provider requests. Pending rearrangements wait while a work control has keyboard focus or a disclosure is open. Explicit browser choices remain local and are never supplied to TypeSafe. Use `adaptive off` for the server-level privacy/cost opt-out.
+
+Codex setup also requires host hook trust: use `/hooks` to review and trust Live Canvas SessionStart, then open a new chat and send its first message. Installer `check` verifies files only and reports `requires_host_verification`; it cannot prove the hook is trusted or has executed. It does not edit the host's trust records.
+
+
+## Guided setup and configuration
+
+From the repository root, run `python3 session-canvas/setup.py`. Python 3.9+ on local macOS or Linux is required. The wizard does not assume a client configuration, TypeSafe account, or API key already exists. It asks which clients to install, whether to auto-open, and whether to opt into TypeSafe. Review the displayed choices before applying them. Selected host configurations are checked for conflicts before changes; unrelated hooks and skills are preserved.
+
+Use `setup.py configure` to revisit settings without installing any clients. `setup.py status` reports effective settings and key presence/source without exposing credentials or making provider requests. `canvas.py configure` is an alternate entry point to configuration.
+
+```sh
+python3 session-canvas/setup.py configure --daily-calls 10000
+python3 session-canvas/setup.py configure --daily-calls 500 --daily-bytes 3000000
+python3 session-canvas/setup.py configure --auto-open off
+python3 session-canvas/setup.py configure --typesafe off --remove-key
+```
+
+TypeSafe is optional. Sign in or create an account, then get an API key from the [TypeSafe dashboard](https://console.typesafe.ai/settings/keys), linked by its [official quick start](https://docs.typesafe.ai/introduction/quickstart). Enabling it shares bounded authored excerpts with TypeSafe, as described above. An entered key is saved in `configuration/settings.json` inside the private runtime state root, separately from task data and usage records. The directory is owner-only (`0700`) and file owner-readable/writable (`0600`); this is plaintext storage, not encryption. Avoid sharing or committing private runtime state. Key entry uses a hidden terminal prompt. Scripted configuration accepts `--api-key-stdin`; it never accepts a key argument. `--remove-key` removes the saved key but cannot remove a key inherited from the server environment.
+
+The running worker reloads saved configuration. Existing environment variables override the corresponding saved settings; unset them and restart the server to use saved values. Configuration changes never reset the daily usage ledger. A lower limit can immediately exhaust today's remaining allowance.
+
+For unattended setup, use `--non-interactive`, repeat `--client` for each chosen host, and explicitly supply `--auto-open on|off` and `--typesafe on|off`. Missing choices fail with instructions instead of waiting for input. `--user-home` isolates client configuration for testing. `--home` selects a custom state root for configure/status; guided hook installation rejects a non-default state root, because desktop hooks must read the same configuration. For a completely isolated setup test, copy the bundle into a temporary directory as well.
+
+Codex requires a separate host-controlled review: enable hooks if necessary, run `/hooks` in Codex CLI, review the exact Live Canvas SessionStart command, and trust it. Restart if necessary, then send the first message in a new desktop chat. Cursor exposes hook diagnostics in its Hooks tab/output channel; Claude Code exposes `/hooks` and opens the OS browser. Installed files alone are not proof of loaded or executed hooks. Setup never writes trust approvals.

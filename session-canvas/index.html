@@ -1,3 +1,370 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Live Canvas</title>  <script type="module" crossorigin src="/board-assets/assets/index-CyBnlcgW.js"></script>
-  <link rel="stylesheet" crossorigin href="/board-assets/assets/index-DlChdCZm.css">
-</head><body><div id="root"></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Live Canvas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23315ba7'/%3E%3Cpath d='M9 9h14v3H12v8h11v3H9z' fill='white'/%3E%3C/svg%3E">
+<style>
+/* Tokens */
+:root{color-scheme:light;--bg:#fafafa;--surface:#f0f0f0;--raised:#fff;--text:#202020;--muted:#636363;--line:#ddd;--accent:#315ba7;--accent-wash:#e9effb;--good:#347452;--warn:#936622;--shadow:0 8px 30px #00000012;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#151515;--surface:#202020;--raised:#292929;--text:#eee;--muted:#a4a4a4;--line:#383838;--accent:#8fb4ff;--accent-wash:#253149;--good:#88c5a3;--warn:#d4b17d;--shadow:0 8px 30px #0005}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#151515;--surface:#202020;--raised:#292929;--text:#eee;--muted:#a4a4a4;--line:#383838;--accent:#8fb4ff;--accent-wash:#253149;--good:#88c5a3;--warn:#d4b17d;--shadow:0 8px 30px #0005}
+/* Base and chrome */
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.55}button,input,select,textarea{font:inherit}button,select{color:inherit}button,summary,input,select{-webkit-tap-highlight-color:transparent}button{border:0;background:transparent;cursor:pointer;min-height:32px;padding:5px 9px;border-radius:6px}button:hover{background:var(--surface)}button:disabled{opacity:.45;cursor:default}button.primary{background:var(--accent);color:var(--bg);font-weight:600}button.secondary{background:var(--raised)}button.quiet{color:var(--muted);padding-inline:6px}a{color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere}button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}input[type="checkbox"]{width:17px;height:17px;accent-color:var(--accent);margin:3px 0;flex:none}p,h1,h2,h3,ul,ol{margin:0}p,li,td,th,h1,h2,h3,summary{overflow-wrap:anywhere}p{white-space:pre-wrap}ul,ol{padding-left:20px}li+li{margin-top:7px}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}main{max-width:760px;margin:0 auto;padding:18px 18px 28px}.toolbar{display:flex;align-items:flex-start;gap:8px}.heading{flex:1;min-width:0}h1{font-size:18px;line-height:1.3;font-weight:650;letter-spacing:-.025em}.header-actions{display:flex;gap:2px;margin-top:-5px;flex:none}.icon-button{width:32px;padding:6px;display:grid;place-items:center}.icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6}.status-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px;color:var(--muted);font-size:11px;margin-top:7px}.connection{display:inline-flex;align-items:center;gap:5px}.dot{width:5px;height:5px;border-radius:50%;background:var(--warn)}[data-live="true"] .dot{background:var(--good)}.settings{position:relative}.settings>summary{list-style:none;cursor:pointer;border-radius:6px}.settings>summary::-webkit-details-marker{display:none}.settings[open]>summary{background:var(--surface)}.settings-popover{position:absolute;z-index:10;right:0;top:38px;width:258px;max-width:calc(100vw - 36px);padding:14px;background:var(--raised);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}.settings-popover label{display:flex;align-items:center;justify-content:space-between;gap:12px}.settings-popover select{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:5px}.settings-popover p{font-size:12px;color:var(--muted);margin:12px 0 5px}.settings-popover button{padding-left:0}.context{font-size:12px;color:var(--muted);margin-top:15px}.context-description{margin-top:3px}.notice{font-size:12px;padding:9px 11px;border-radius:6px;background:var(--surface);color:var(--muted);margin-top:14px}.empty-state{padding:30px 0;color:var(--muted)}.empty-state h2{font-size:14px;font-weight:550;color:var(--text);margin-bottom:5px}.empty-state p{max-width:44ch}.summary-text{margin-top:16px;font-size:13px}.summary-text:empty{display:none}
+/* Work: spacing carries the hierarchy; surfaces are reserved for interaction. */
+#work{margin-top:20px}.work-section+.work-section{margin-top:25px}.section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}.section-heading h2{font-size:14px;font-weight:650;line-height:1.4}.block+.block{margin-top:14px}.rich-text code, .entry code{font-size:12px;background:var(--surface);padding:1px 4px;border-radius:3px}.rich-text strong{font-weight:650}.text-disclosure{margin-top:7px}.text-disclosure>summary{cursor:pointer;color:var(--muted);font-size:12px}.text-disclosure[open] .rich-text{margin-top:8px}.block-tools{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}.local-note{color:var(--muted);font-size:11px}.checklist,.shortlist{padding:0;list-style:none}.checklist li+li,.shortlist li+li{margin:0}.check-row{display:flex;align-items:flex-start;gap:10px;min-height:38px;padding:7px 0;cursor:pointer}.check-row .item-text{flex:1;min-width:0}.check-row.is-checked .item-text{color:var(--muted)}.shortlist .check-row{border-radius:7px;padding:9px 10px;margin-inline:-10px}.shortlist .check-row:has(input:checked){background:var(--accent-wash)}.shortlist .check-row input{margin-top:3px}.progress-caption{font-size:12px;color:var(--muted)}.more-items{margin-top:8px}.more-items>summary{color:var(--muted);cursor:pointer;font-size:12px}.more-items>div{padding-top:10px}.table-wrap{max-width:100%;overflow:auto;border-radius:5px}table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}th{font-size:11px;font-weight:550;color:var(--muted);padding:0 10px 8px 0;vertical-align:top}td{padding:10px 10px 10px 0;border-top:1px solid var(--line);vertical-align:top}th:last-child,td:last-child{padding-right:0}.cell-label{display:none}.timeline{list-style:none;padding:0;counter-reset:beat}.timeline li{display:grid;grid-template-columns:25px minmax(0,1fr);gap:9px;margin:0;padding-bottom:14px;counter-increment:beat}.timeline li:before{content:counter(beat);font-size:11px;color:var(--muted);padding-top:2px}.timeline strong{font-weight:600}.timeline .detail{color:var(--muted);margin-top:2px}.timeline time{font-size:11px;color:var(--muted);display:block;margin-bottom:2px}
+/* Recall is the one focal component. */
+.study{padding:15px 16px;background:var(--surface);border-radius:10px}.study-top,.study-navigation,.study-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}.study-top{font-size:12px;color:var(--muted)}.study-top button{min-height:28px;font-size:12px}.study-progress{height:3px;background:var(--line);border-radius:2px;margin:11px 0 19px;overflow:hidden}.study-progress span{display:block;height:100%;background:var(--accent);transition:width .2s}.study-question{font-size:15px;line-height:1.5;font-weight:550;min-height:48px;margin-bottom:16px}.study-answer{padding:12px 0 3px;margin-bottom:12px;border-top:1px solid var(--line)}.study-answer .local-note{display:block;margin-bottom:5px}.study-actions{justify-content:flex-start;min-height:34px;flex-wrap:wrap}.study-actions button{padding-inline:13px}.study-navigation{margin-top:15px;padding-top:9px;border-top:1px solid var(--line)}.study-navigation .counter{color:var(--muted);font-size:12px}.study-empty{padding:9px 0 16px}.study-empty h3{font-size:15px;font-weight:600;margin-bottom:5px}.study-empty p{color:var(--muted)}.visual-section{margin-top:24px}.visual-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.visual-heading h2{font-size:14px;font-weight:600}.visual-section iframe{width:100%;height:300px;border:0;border-radius:8px;background:var(--surface);margin-top:8px}.visual-section iframe.expanded{height:520px}
+/* Activity is bounded and never promoted into authored work. */
+.secondary-panels{margin-top:28px;padding-top:10px;border-top:1px solid var(--line)}.secondary-panel>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none;min-height:38px;color:var(--muted);font-size:12px}.secondary-panel>summary::-webkit-details-marker{display:none}.secondary-panel>summary:after{content:'›';font-size:18px;line-height:1;transform:rotate(0)}.secondary-panel[open]>summary:after{transform:rotate(90deg)}.secondary-panel>summary span:last-child{margin-left:auto;font-size:11px}.panel-scroll{max-height:270px;overflow:auto;overscroll-behavior:contain;padding:3px 8px 10px 0}.entry{padding:10px 0}.entry+.entry{border-top:1px solid var(--line)}.entry-head{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:11px;margin-bottom:5px}.entry p{font-size:13px;line-height:1.5}.entry details{margin-top:7px}.entry summary{color:var(--muted);cursor:pointer;font-size:12px}.history-preview{padding:9px 0 0 10px}.history-preview h3{font-size:13px;font-weight:600;margin-bottom:4px}.history-preview p+p{margin-top:8px}.panel-note{font-size:11px;color:var(--muted);padding:5px 0}.toast{position:fixed;z-index:20;bottom:16px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);background:var(--raised);box-shadow:var(--shadow);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:12px}
+@media(max-width:520px){table.wide,table.wide tbody,table.wide tr,table.wide td{display:block}table.wide thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}table.wide tr{padding:11px 12px;background:var(--surface);border-radius:7px;margin-bottom:8px}table.wide td{padding:5px 0;border:0;display:grid;grid-template-columns:minmax(72px,28%) minmax(0,1fr);gap:12px}table.wide td:first-child{font-weight:600}table.wide .cell-label{display:block;font-size:11px;color:var(--muted);font-weight:400}table.wide .cell-value{min-width:0}main{padding:16px 16px 24px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+.adaptive-section>summary{font-size:14px;font-weight:600;cursor:pointer;padding:8px 0}.adaptive-section[open]>summary{margin-bottom:8px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="toolbar"><div class="heading"><h1 id="title">Live Canvas</h1></div><div class="header-actions">
+    <button id="copy-work" class="icon-button" aria-label="Copy authored work" title="Copy authored work" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="2"/><path d="M12 6V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v8a1 1 0 0 0 1 1h3"/></svg></button>
+    <details class="settings" id="settings"><summary class="icon-button" aria-label="Canvas settings" title="Canvas settings"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></summary><div class="settings-popover">
+      <label><input id="adaptive-layout" type="checkbox" checked> Follow suggested focus</label><p id="adaptive-status" class="local-note">Original authored layout</p><p class="local-note">Browser layout only. Remote inference is controlled by the local server.</p><details><summary>Setup and API key</summary><p>From your Live Canvas checkout, run <code>python3 session-canvas/setup.py</code> to choose clients, set an API key, and change daily limits. Keys stay out of this browser.</p><p>For Codex, review the Live Canvas SessionStart entry in CLI <code>/hooks</code>, then send a message in a new chat.</p></details>
+      <label for="theme-select">Appearance <select id="theme-select"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <p id="storage-note">Checks, shortlists, and practice are saved in this browser only. They are not sent to the assistant.</p>
+      <button id="reset-local" class="quiet">Reset my interactions</button>
+      <p>Copy work copies authored content. Copy a shortlist from its own list.</p>
+    </div></details>
+  </div></div>
+  <div class="status-line"><span class="connection" id="connection" data-live="false"><span class="dot" aria-hidden="true"></span><span id="connection-text">Connecting</span></span><span aria-hidden="true">·</span><span id="freshness">No authored work yet</span></div>
+  <div id="context" class="context" hidden><span id="context-label"></span><p id="context-description" class="context-description" hidden></p></div>
+</header>
+<div id="notice" class="notice" role="status" hidden></div>
+<div id="loading" class="empty-state"><p>Opening your canvas…</p></div>
+<div id="canvas" hidden>
+  <div id="outcome" class="summary-text rich-text" hidden></div>
+  <div id="work"></div>
+  <div id="empty-work" class="empty-state" hidden><h2>Ready for the work</h2><p>Outlines, ideas, notes, and other useful material will appear here as the assistant updates this canvas.</p></div>
+  <section id="visual-section" class="visual-section" hidden><div class="visual-heading"><h2 id="visual-title">Visual note</h2><button id="visual-expand" class="quiet">Expand</button></div><iframe id="visual" title="Contained visual note" sandbox="" referrerpolicy="no-referrer"></iframe></section>
+  <div class="secondary-panels">
+    <details class="secondary-panel" id="activity-panel"><summary><span>Activity</span><span id="activity-caption">No updates</span></summary><div id="feed" class="panel-scroll" tabindex="0" role="region" aria-label="Recent assistant activity"></div></details>
+    <details class="secondary-panel" id="history-panel"><summary><span>Version history</span><span id="history-caption">No edits</span></summary><div id="history" class="panel-scroll" tabindex="0" role="region" aria-label="Recent authored versions"></div></details>
+  </div>
+</div>
+</main>
+<div id="announcement" class="sr-only" role="status" aria-live="polite"></div><div id="toast" class="toast" hidden></div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let state = null, etag = null, failures = 0, workSignature = '', outcomeSignature = '', activitySignature = '', historySignature = '', lastVisual = null, boundary = '', localValues = {}, storageAvailable = true, toastTimer;
+function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
+function hash(text) { let value = 2166136261; for (let i = 0; i < text.length; i++) value = Math.imul(value ^ text.charCodeAt(i), 16777619); return (value >>> 0).toString(36); }
+// Synchronous SHA-256 keeps content keys compact without making rendering async.
+const digestInitial = [], digestConstants = [];
+for (let candidate = 2; digestConstants.length < 64; candidate++) {
+  let prime = true; for (let factor = 2; factor * factor <= candidate; factor++) if (candidate % factor === 0) { prime = false; break; }
+  if (prime) { if (digestInitial.length < 8) digestInitial.push((Math.sqrt(candidate) % 1 * 0x100000000) >>> 0); digestConstants.push((Math.cbrt(candidate) % 1 * 0x100000000) >>> 0); }
+}
+function fingerprint(text) {
+  const bytes = new TextEncoder().encode(text), buffer = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64), words = new Uint32Array(64), result = digestInitial.slice();
+  buffer.set(bytes); buffer[bytes.length] = 0x80; const view = new DataView(buffer.buffer);
+  view.setUint32(buffer.length - 8, Math.floor(bytes.length / 0x20000000)); view.setUint32(buffer.length - 4, (bytes.length * 8) >>> 0);
+  const rotate = (value, bits) => (value >>> bits) | (value << (32 - bits));
+  for (let offset = 0; offset < buffer.length; offset += 64) {
+    for (let i = 0; i < 16; i++) words[i] = view.getUint32(offset + i * 4);
+    for (let i = 16; i < 64; i++) { const x = words[i - 15], y = words[i - 2]; words[i] = (words[i - 16] + (rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3)) + words[i - 7] + (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10))) >>> 0; }
+    let [a, b, c, d, e, f, g, h] = result;
+    for (let i = 0; i < 64; i++) { const first = (h + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + digestConstants[i] + words[i]) >>> 0; const second = ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0; h = g; g = f; f = e; e = (d + first) >>> 0; d = c; c = b; b = a; a = (first + second) >>> 0; }
+    [a, b, c, d, e, f, g, h].forEach((value, i) => { result[i] = (result[i] + value) >>> 0; });
+  }
+  return result.map(value => value.toString(16).padStart(8, '0')).join('');
+}
+function storageGet(key) { try { return localStorage.getItem(key); } catch { storageAvailable = false; return null; } }
+function storageSet(key, value) { try { localStorage.setItem(key, value); } catch { storageAvailable = false; } updateStorageNote(); }
+function storageRemove(key) { try { localStorage.removeItem(key); } catch { storageAvailable = false; } }
+function storageKeys(prefix) { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(key => key?.startsWith(prefix)); } catch { storageAvailable = false; return []; } }
+function updateStorageNote() { $('storage-note').textContent = storageAvailable ? 'Checks, shortlists, and practice are saved in this browser only. They are not sent to the assistant.' : 'Browser storage is unavailable. Interactions last for this page only and are not sent to the assistant.'; }
+let localPrefix = '', localEpoch = '0', localContext = '', legacyStoreKey = '';
+function syncLocalEpoch() {
+  if (!localPrefix || !storageAvailable) return;
+  const next = storageGet(localPrefix + 'epoch') || '0';
+  if (next !== localEpoch) { localEpoch = next; localValues = {}; }
+}
+function recordKey(digest) { return localPrefix + 'record:' + localEpoch + ':' + localContext + ':' + digest; }
+function readRecord(key) { try { const value = JSON.parse(storageGet(key)); return value && Object.hasOwn(value, 'value') ? value : null; } catch { return null; } }
+function boundLocalRecords() {
+  const records = storageKeys(localPrefix + 'record:').map(key => { const text = storageGet(key) || ''; let at = 0; try { at = JSON.parse(text)?.at || 0; } catch {} return { key, size: key.length + text.length, at }; }).sort((a, b) => a.at - b.at);
+  let size = records.reduce((sum, item) => sum + item.size, 0), count = records.length;
+  for (const item of records) { if (count <= 400 && size <= 200000) break; storageRemove(item.key); count--; size -= item.size; }
+  const keys = Object.keys(localValues); for (const key of keys.slice(0, Math.max(0, keys.length - 400))) delete localValues[key];
+}
+function migrateLegacy() {
+  if (localEpoch !== '0') return;
+  let saved; try { saved = JSON.parse(storageGet(legacyStoreKey)); } catch { return; }
+  if (saved?.boundary !== boundary || !saved.values || typeof saved.values !== 'object') return;
+  for (const [oldKey, item] of Object.entries(saved.values)) {
+    if (typeof item?.signature !== 'string' || hash(item.signature) !== oldKey || !Object.hasOwn(item, 'value')) continue;
+    const digest = fingerprint(item.signature), key = recordKey(digest);
+    if (readRecord(key) === null) { localValues[digest] = { value: item.value }; storageSet(key, JSON.stringify({ value: item.value, at: Date.now() })); }
+  }
+  if (storageAvailable) storageRemove(legacyStoreKey); boundLocalRecords();
+}
+function useLocalState(data) {
+  const next = JSON.stringify([data.thread, data.content.context?.id || null, data.context_started_at || null]);
+  if (next === boundary) { syncLocalEpoch(); return; }
+  boundary = next; localValues = {}; localPrefix = 'live-canvas-interactions-v2:' + fingerprint(data.thread) + ':'; localContext = fingerprint(boundary);
+  legacyStoreKey = 'live-canvas-interactions-v1:' + hash(data.thread); localEpoch = storageGet(localPrefix + 'epoch') || '0';
+  migrateLegacy(); updateStorageNote();
+}
+function localGet(signature, fallback) {
+  syncLocalEpoch(); const digest = fingerprint(signature), stored = readRecord(recordKey(digest));
+  if (stored) { localValues[digest] = { value: stored.value }; return stored.value; }
+  if (storageAvailable) delete localValues[digest];
+  return Object.hasOwn(localValues, digest) ? localValues[digest].value : fallback;
+}
+function localSet(signature, value) {
+  syncLocalEpoch(); const digest = fingerprint(signature), key = recordKey(digest), stored = readRecord(key);
+  delete localValues[digest]; localValues[digest] = { value };
+  // Identical paints do not write, preventing cross-tab storage-event loops.
+  if (!stored || JSON.stringify(stored.value) !== JSON.stringify(value)) storageSet(key, JSON.stringify({ value, at: Date.now() }));
+  boundLocalRecords();
+}
+function resetLocalState() {
+  localEpoch = Date.now().toString(36) + '-' + crypto.randomUUID(); localValues = {};
+  storageSet(localPrefix + 'epoch', localEpoch); storageRemove(legacyStoreKey);
+  // Other tabs may already have written in the new epoch: preserve those records.
+  for (const key of storageKeys(localPrefix + 'record:')) if (!key.startsWith(localPrefix + 'record:' + localEpoch + ':')) storageRemove(key);
+}
+function refreshLocalView() {
+  if (!state) return; workSignature = outcomeSignature = historySignature = ''; render(state);
+}
+window.addEventListener('storage', event => {
+  if (event.storageArea !== localStorage || !localPrefix || (event.key !== null && !event.key.startsWith(localPrefix))) return;
+  syncLocalEpoch(); refreshLocalView();
+});
+function itemKey(sectionId, block, item, index = 0) { return JSON.stringify([sectionId, block.id, block.type, index, item]); }
+function shorten(value, limit) { const text = String(value || ''); return text.length > limit ? text.slice(0, limit).trimEnd() + '…' : text; }
+function relative(stamp) { const age = Math.max(0, (Date.now() - new Date(stamp).getTime()) / 1000); if (!Number.isFinite(age)) return 'time unavailable'; if (age < 60) return 'just now'; if (age < 3600) return Math.floor(age / 60) + 'm ago'; if (age < 86400) return Math.floor(age / 3600) + 'h ago'; return Math.floor(age / 86400) + 'd ago'; }
+function timeLabel(stamp) { const date = new Date(stamp); return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function safeURL(value) { try { const url = new URL(value); return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : null; } catch { return null; } }
+function richText(target, value) {
+  // Deliberately small Markdown subset, built entirely from DOM text nodes.
+  const text = String(value || ''), pattern = /\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`|\*([^*\n]+)\*/g;
+  let position = 0, match;
+  while ((match = pattern.exec(text))) {
+    target.append(document.createTextNode(text.slice(position, match.index)));
+    let part;
+    if (match[1]) { const href = safeURL(match[2]); if (href) { part = node('a', match[1]); part.href = href; part.target = '_blank'; part.rel = 'noopener noreferrer'; part.referrerPolicy = 'no-referrer'; } else part = document.createTextNode(match[1]); }
+    else part = node(match[3] ? 'strong' : match[4] ? 'code' : 'em', match[3] || match[4] || match[5]);
+    target.append(part); position = pattern.lastIndex;
+  }
+  target.append(document.createTextNode(text.slice(position))); return target;
+}
+function paragraph(text, className = 'rich-text') { return richText(node('p', undefined, className), text); }
+function plainText(text) { return richText(node('span'), text).textContent; }
+function button(label, action, className = 'quiet') { const el = node('button', label, className); el.type = 'button'; el.onclick = action; return el; }
+function announce(message) { $('announcement').textContent = message; $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2400); }
+async function copyText(text, message = 'Copied') {
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else { const field = node('textarea', text, 'sr-only'); document.body.append(field); field.select(); const copied = document.execCommand('copy'); field.remove(); if (!copied) throw Error('Copy unavailable'); }
+    announce(message);
+  } catch { announce('Copy unavailable. Select the text to copy it.'); }
+}
+function visibleBlock(block) { if (block.type === 'text') return !!block.text.trim(); if (block.type === 'table') return block.columns.length && block.rows.some(row => row.some(value => value.trim())); return block.items.some(item => typeof item === 'string' ? item.trim() : block.type === 'reveal' ? item.prompt.trim() && item.answer.trim() : block.type === 'timeline' ? item.label.trim() : item.text.trim()); }
+function disclosure(summary, signature) { const context = boundary, epoch = localEpoch, details = node('details', undefined, 'more-items'); details.append(node('summary', summary)); details.open = localGet(signature, false) === true; details.addEventListener('toggle', () => { if (boundary === context && epoch === localEpoch) localSet(signature, details.open); }); return details; }
+function foldCollection(collection, signature, limit = 5, label = 'items') {
+  const extra = Array.from(collection.children).slice(limit); if (!extra.length) return;
+  const more = disclosure('Show ' + extra.length + ' more ' + label, signature), tail = collection.cloneNode(false);
+  if (collection.tagName.toLowerCase() === 'ol') tail.start = limit + 1;
+  if (collection.className === 'timeline') tail.style.counterReset = 'beat ' + limit;
+  extra.forEach(item => tail.append(item));
+  if (collection.tagName.toLowerCase() === 'tbody') {
+    const table = collection.parentElement, remainder = table.cloneNode(false);
+    remainder.append(table.querySelector('thead').cloneNode(true), tail); more.append(remainder); table.after(more);
+  } else { more.append(tail); collection.after(more); }
+}
+function renderChecklist(block, sectionId) {
+  const host = node('div'), tools = node('div', undefined, 'block-tools'), caption = node('span', undefined, 'progress-caption'), list = node('ul', undefined, 'checklist');
+  const items = block.items.filter(item => item.text.trim());
+  const checked = (item, index) => localGet(itemKey(sectionId, block, item, index), !!item.checked) === true;
+  const update = () => { caption.textContent = items.filter(checked).length + ' of ' + items.length + ' checked'; };
+  tools.append(caption, node('span', 'Your checks · this browser', 'local-note')); host.append(tools, list);
+  items.forEach((item, index) => { const li = node('li'), label = node('label', undefined, 'check-row'), input = node('input'); input.type = 'checkbox'; input.checked = checked(item, index); label.classList.toggle('is-checked', input.checked); input.onchange = () => { localSet(itemKey(sectionId, block, item, index), input.checked); label.classList.toggle('is-checked', input.checked); update(); }; label.append(input, node('span', plainText(item.text), 'item-text')); li.append(label); list.append(li); });
+  foldCollection(list, JSON.stringify([sectionId, block.id, 'checklist-more', items]));
+  update(); return host;
+}
+function renderShortlist(block, sectionId) {
+  const host = node('div'), tools = node('div', undefined, 'block-tools'), caption = node('span', undefined, 'progress-caption'), list = node('ul', undefined, 'shortlist');
+  const items = block.items.filter(item => item.trim()), chosen = (item, index) => localGet(itemKey(sectionId, block, item, index), false) === true;
+  const copy = button('Copy shortlist', () => copyText(items.filter(chosen).map(item => '• ' + plainText(item)).join('\n'), 'Shortlist copied'));
+  const update = () => { const count = items.filter(chosen).length; caption.textContent = count ? count + ' shortlisted · this browser' : 'Choose a shortlist · this browser'; copy.disabled = !count; };
+  tools.append(caption, copy); host.append(tools, list);
+  items.forEach((item, index) => { const li = node('li'), label = node('label', undefined, 'check-row'), input = node('input'); input.type = 'checkbox'; input.checked = chosen(item, index); input.setAttribute('aria-label', 'Shortlist: ' + plainText(item)); input.onchange = () => { localSet(itemKey(sectionId, block, item, index), input.checked); update(); }; label.append(input, paragraph(item, 'item-text rich-text')); li.append(label); list.append(li); });
+  foldCollection(list, JSON.stringify([sectionId, block.id, 'shortlist-more', items]));
+  update(); return host;
+}
+function renderStudy(block, sectionId) {
+  const host = node('div', undefined, 'study');
+  const items = block.items.filter(item => item.prompt.trim() && item.answer.trim());
+  const scope = JSON.stringify([sectionId, block.id, 'study-view', items]);
+  const memory = item => localGet(itemKey(sectionId, block, item), 'new');
+  let view = localGet(scope, { index: 0, retry: false }), index = Number.isInteger(view.index) ? view.index : 0, retry = view.retry === true;
+  function paint(focus = false) {
+    host.replaceChildren(); const remembered = items.filter(item => memory(item) === 'remembered').length, again = items.filter(item => memory(item) === 'retry').length;
+    const pool = retry ? items.map((item, i) => memory(item) === 'retry' ? i : -1).filter(i => i >= 0) : items.map((_, i) => i);
+    if (!pool.includes(index)) index = pool[0] ?? 0;
+    localSet(scope, { index, retry });
+    const top = node('div', undefined, 'study-top'), progressLabel = node('span', remembered + ' of ' + items.length + ' remembered');
+    top.append(progressLabel, button(retry ? 'All cards' : 'Practice again' + (again ? ' (' + again + ')' : ''), () => { retry = !retry; paint(true); }));
+    top.lastChild.disabled = !retry && !again;
+    const track = node('div', undefined, 'study-progress'), fill = node('span'); fill.style.width = (remembered / items.length * 100) + '%'; track.setAttribute('role', 'progressbar'); track.setAttribute('aria-label', 'Cards you marked remembered'); track.setAttribute('aria-valuemin', '0'); track.setAttribute('aria-valuemax', String(items.length)); track.setAttribute('aria-valuenow', String(remembered)); track.append(fill); host.append(top, track);
+    if (!pool.length) { const empty = node('div', undefined, 'study-empty'); empty.append(node('h3', 'Nothing left in this practice round'), paragraph('Your marks are saved in this browser. Review all cards whenever you like.')); host.append(empty, button('Review all cards', () => { retry = false; paint(true); }, 'secondary')); return; }
+    const item = items[index], revealKey = JSON.stringify([sectionId, block.id, 'answer', item]);
+    let shown = localGet(revealKey, false) === true;
+    const question = node('h3', item.prompt, 'study-question'); question.tabIndex = -1;
+    const answer = node('div', undefined, 'study-answer'); answer.append(node('span', 'Answer', 'local-note'), paragraph(item.answer)); answer.hidden = !shown;
+    const actions = node('div', undefined, 'study-actions');
+    const mark = value => { localSet(itemKey(sectionId, block, item), value); localSet(revealKey, false); const remaining = pool.filter(i => i !== index && memory(items[i]) !== 'remembered'); index = remaining.find(i => i > index) ?? remaining[0] ?? pool[(pool.indexOf(index) + 1) % pool.length]; paint(true); $('announcement').textContent = value === 'remembered' ? 'Marked remembered in this browser.' : 'Added to practice again in this browser.'; };
+    const reveal = button(shown ? 'Hide answer' : 'Reveal answer', () => { shown = !shown; localSet(revealKey, shown); answer.hidden = !shown; reveal.textContent = shown ? 'Hide answer' : 'Reveal answer'; reveal.setAttribute('aria-expanded', String(shown)); againButton.hidden = gotIt.hidden = !shown; }, shown ? 'quiet' : 'primary'); reveal.setAttribute('aria-expanded', String(shown));
+    const againButton = button('Again', () => mark('retry'), 'secondary'), gotIt = button('Got it', () => mark('remembered'), 'primary'); againButton.hidden = gotIt.hidden = !shown; actions.append(reveal, againButton, gotIt);
+    const navigation = node('div', undefined, 'study-navigation'), prev = button('←', () => { index = pool[(pool.indexOf(index) - 1 + pool.length) % pool.length]; paint(true); }), next = button('→', () => { index = pool[(pool.indexOf(index) + 1) % pool.length]; paint(true); }); prev.setAttribute('aria-label', 'Previous practice card'); next.setAttribute('aria-label', 'Next practice card'); prev.disabled = next.disabled = pool.length < 2;
+    navigation.append(prev, node('span', (pool.indexOf(index) + 1) + ' / ' + pool.length + ' · browser-only practice', 'counter'), next);
+    host.append(question, answer, actions, navigation); if (focus) question.focus();
+  }
+  paint(); return host;
+}
+function renderTable(block, sectionId) {
+  const wrapper = node('div', undefined, 'table-wrap'), table = node('table', undefined, block.columns.length > 2 ? 'wide' : ''), head = node('thead'), header = node('tr'), body = node('tbody');
+  block.columns.forEach(column => { const th = node('th', column); th.scope = 'col'; header.append(th); }); head.append(header);
+  block.rows.forEach(row => { const tr = node('tr'); row.forEach((value, index) => { const td = node('td'), label = node('span', block.columns[index], 'cell-label'); label.setAttribute('aria-hidden', 'true'); td.append(label, richText(node('span', undefined, 'cell-value rich-text'), value)); tr.append(td); }); body.append(tr); }); table.append(head, body); wrapper.append(table); foldCollection(body, JSON.stringify([sectionId, block.id, 'table-more', block.columns, block.rows]), 5, 'rows'); return wrapper;
+}
+function renderBlock(block, sectionId) {
+  const host = node('div', undefined, 'block'); host.dataset.blockId = block.id; host.dataset.blockType = block.type;
+  if (block.type === 'text') {
+    if (block.text.length <= 650) host.append(paragraph(block.text));
+    else { const detail = disclosure('Read full text', JSON.stringify([sectionId, block.id, 'text', block.text])); detail.className = 'text-disclosure'; const preview = paragraph(shorten(block.text, 280)); preview.hidden = detail.open; detail.addEventListener('toggle', () => { preview.hidden = detail.open; }); detail.append(paragraph(block.text)); host.append(preview, detail); }
+  } else if (block.type === 'checklist') host.append(renderChecklist(block, sectionId));
+  else if (block.type === 'reveal') host.append(renderStudy(block, sectionId));
+  else if (block.type === 'table') host.append(renderTable(block, sectionId));
+  else if (block.type === 'list' && block.selectable) host.append(renderShortlist(block, sectionId));
+  else if (block.type === 'list') { const list = node(block.ordered ? 'ol' : 'ul'); block.items.filter(item => item.trim()).forEach(item => list.append(richText(node('li'), item))); host.append(list); foldCollection(list, JSON.stringify([sectionId, block.id, 'list-more', block.items])); }
+  else if (block.type === 'timeline') { const list = node('ol', undefined, 'timeline'); block.items.filter(item => item.label.trim()).forEach(item => { const li = node('li'), content = node('div'); if (item.at) content.append(node('time', item.at)); content.append(node('strong', item.label)); if (item.detail) content.append(paragraph(item.detail, 'detail rich-text')); li.append(content); list.append(li); }); host.append(list); foldCollection(list, JSON.stringify([sectionId, block.id, 'timeline-more', block.items]), 5, 'steps'); }
+  return host;
+}
+let appliedFocus = null, focusBoundary = '';
+function presentationFocus(data, enabled = true) {
+  const candidate = data.presentation;
+  return enabled && candidate?.status === 'focused' && (data.content.sections || []).some(section => section.id === candidate.focus_id) ? candidate.focus_id : null;
+}
+function renderWork(data, force = false) {
+  const content = data.content, desiredFocus = presentationFocus(data, $('adaptive-layout').checked);
+  if (focusBoundary !== boundary) { focusBoundary = boundary; appliedFocus = null; }
+  if (data.presentation?.status !== 'focused') appliedFocus = null;
+  const busy = !!($('work').querySelector('details[open]') || (document.activeElement && $('work').contains?.(document.activeElement)));
+  if (force || !busy) appliedFocus = desiredFocus;
+  if (!(content.sections || []).some(section => section.id === appliedFocus)) appliedFocus = null;
+  const signature = JSON.stringify([boundary, content.sections, content.decisions, content.open, content.next, appliedFocus]);
+  const labels = { focused: 'TypeSafe selected a focus section', unchanged: 'TypeSafe kept the authored layout', uncertain: 'No clear focus · authored layout', 'missing-key': 'TypeSafe key unavailable · authored layout', unavailable: 'TypeSafe unavailable · authored layout', 'budget-exhausted': 'Daily TypeSafe budget reached · authored layout', 'invalid-response': 'TypeSafe result rejected · authored layout', 'not-needed': 'Original authored layout' };
+  $('adaptive-status').textContent = !$('adaptive-layout').checked ? 'Original layout · browser preference' : busy && desiredFocus !== appliedFocus ? 'Layout update waiting while you use this view' : labels[data.presentation?.status] || 'Original authored layout';
+  if (signature === workSignature && !force) return;
+  workSignature = signature; $('work').replaceChildren();
+  const sections = [...(content.sections || [])];
+  if (appliedFocus) sections.sort((a, b) => Number(b.id === appliedFocus) - Number(a.id === appliedFocus));
+  for (const section of sections) {
+    const blocks = section.blocks.filter(visibleBlock); if (!blocks.length) continue;
+    const el = node('section', undefined, 'work-section'); el.dataset.sectionId = section.id;
+    if (appliedFocus && section.id !== appliedFocus) {
+      const detail = disclosure(section.title || 'Work section', JSON.stringify(['adaptive-section', section.id]));
+      detail.className = 'adaptive-section'; blocks.forEach(block => detail.append(renderBlock(block, section.id))); el.append(detail);
+    } else {
+      if (section.title) { const heading = node('div', undefined, 'section-heading'); heading.append(node('h2', section.title)); el.append(heading); }
+      blocks.forEach(block => el.append(renderBlock(block, section.id)));
+    }
+    $('work').append(el);
+  }
+  for (const [field, title] of [['decisions', 'Decisions'], ['open', 'Open questions'], ['next', 'Next steps']]) {
+    if (!content[field]?.length) continue; const section = node('section', undefined, 'work-section'), heading = node('div', undefined, 'section-heading'); heading.append(node('h2', title)); section.append(heading, renderBlock({ id: field, type: 'list', items: content[field] }, 'legacy')); $('work').append(section);
+  }
+  if (!appliedFocus && $('work').children.length > 3) { const sections = node('div'); Array.from($('work').children).forEach(section => sections.append(section)); $('work').append(sections); foldCollection(sections, JSON.stringify(['sections-more', content.sections, content.decisions, content.open, content.next]), 3, 'sections'); }
+}
+function blockText(block) { if (block.type === 'text') return block.text; if (block.type === 'table') return [block.columns.join(' | '), ...block.rows.map(row => row.join(' | '))].join('\n'); return block.items.map(item => typeof item === 'string' ? '• ' + item : block.type === 'reveal' ? item.prompt + '\n' + item.answer : block.type === 'timeline' ? [item.at, item.label, item.detail].filter(Boolean).join(' — ') : (item.checked ? '[x] ' : '[ ] ') + item.text).join('\n'); }
+function authoredText(content) { return [content.title, content.outcome, ...(content.sections || []).map(section => [section.title, ...section.blocks.map(blockText)].filter(Boolean).join('\n')), ...['decisions', 'open', 'next'].filter(field => content[field]?.length).map(field => field + '\n' + content[field].map(item => '• ' + item).join('\n'))].filter(Boolean).join('\n\n'); }
+function entry(label, at, text) { const article = node('article', undefined, 'entry'), meta = node('div', undefined, 'entry-head'); meta.append(node('span', label), node('time', timeLabel(at))); article.append(meta); if (text) article.append(paragraph(shorten(text, 240))); return article; }
+function renderActivity(data) {
+  const signature = JSON.stringify([data.feed, data.activity, data.content.current, boundary]); if (signature === activitySignature) return; activitySignature = signature;
+  const feed = (data.feed || []).filter(item => item.text?.trim()), recent = feed.slice(0, 4); $('feed').replaceChildren();
+  const signal = data.activity || {}; if (signal.at) $('feed').append(node('p', signal.label + ' · ' + relative(signal.at), 'panel-note'));
+  recent.forEach(item => $('feed').append(entry(item.kind === 'final' ? 'Assistant response' : item.kind === 'commentary' ? 'Assistant update' : 'Observed activity', item.at, item.text)));
+  if (!recent.length && data.content.current) $('feed').append(entry('Current work', data.curated_at, data.content.current));
+  if (!recent.length && !data.content.current) $('feed').append(node('p', 'No assistant messages yet.', 'panel-note'));
+  if (feed.length > recent.length) $('feed').append(node('p', 'Showing the latest ' + recent.length + ' updates. Full conversation stays in your chat.', 'panel-note'));
+  $('activity-caption').textContent = feed.length ? 'Recent updates' : 'No messages';
+}
+function historySummary(revision) {
+  const labels = { sections: 'Work sections', context: 'Context', title: 'Title', outcome: 'Summary', current: 'Current work', decisions: 'Decisions', open: 'Open questions', next: 'Next steps', visual_html: 'Visual', visual_title: 'Visual title' };
+  return [...new Set((revision.fields || []).map(field => labels[field] || 'Content'))].join(', ') + (revision.reason === 'context switch' ? ' · context changed' : ' edited');
+}
+function renderHistory(data) {
+  const signature = JSON.stringify([data.history, boundary]); if (signature === historySignature) return; historySignature = signature;
+  const history = data.history || []; $('history').replaceChildren(); $('history-caption').textContent = history.length ? history.length + ' saved' : 'No edits';
+  history.slice(0, 5).forEach(revision => {
+    const article = entry('Version ' + revision.revision, revision.at, historySummary(revision)), previous = revision.content || {}, detail = disclosure('Previous work', JSON.stringify(['history', revision.revision, revision.at])), preview = node('div', undefined, 'history-preview'); detail.className = '';
+    if (previous.title) preview.append(node('h3', previous.title)); if (previous.outcome) preview.append(paragraph(shorten(previous.outcome, 180)));
+    (previous.sections || []).slice(0, 3).forEach(section => { preview.append(node('h3', section.title), paragraph(shorten(section.blocks.map(blockText).join('\n'), 240))); });
+    if (!(previous.sections || []).length) { for (const field of ['decisions', 'open', 'next']) if (previous[field]?.length) preview.append(paragraph(shorten(previous[field].join(' · '), 180))); }
+    if (!preview.childElementCount) preview.append(paragraph('No earlier authored work.')); detail.append(preview); article.append(detail); $('history').append(article);
+  });
+  if (!history.length) $('history').append(node('p', 'Authored changes will appear here.', 'panel-note'));
+  if (history.length > 5) $('history').append(node('p', 'Showing the five most recent saved versions.', 'panel-note'));
+}
+function renderVisual(content) {
+  $('visual-section').hidden = !content.visual_html; $('visual-title').textContent = content.visual_title || 'Visual note';
+  if (content.visual_html === lastVisual) return; lastVisual = content.visual_html;
+  $('visual').srcdoc = '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src \'none\'; base-uri \'none\'; form-action \'none\'"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{color-scheme:light dark}body{font:13px system-ui;margin:14px;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}</style>' + (content.visual_html || '');
+}
+function refreshTimes() {
+  if (!state) return;
+  $('freshness').textContent = state.curated_at ? 'Edited ' + relative(state.curated_at) : 'No authored work yet';
+  $('freshness').title = state.curated_at ? new Date(state.curated_at).toLocaleString() : 'Waiting for an authored canvas update';
+  const error = state.transcript?.error; $('notice').hidden = state.enabled && !error;
+  $('notice').textContent = !state.enabled ? 'Automatic updates are paused. Your saved work is still here.' : error ? 'Transcript updates are unavailable. Showing saved work.' : '';
+}
+function render(data) {
+  const previousBoundary = boundary; state = data; useLocalState(data); const content = data.content;
+  $('loading').hidden = true; $('canvas').hidden = false; $('title').textContent = content.title || 'Live Canvas'; document.title = (content.title || 'Live Canvas') + ' · Canvas';
+  $('context').hidden = !content.context; $('context-label').textContent = content.context?.label || ''; $('context-description').hidden = !content.context?.description; $('context-description').textContent = content.context?.description || '';
+  const nextOutcome = JSON.stringify([boundary, content.outcome]);
+  if (outcomeSignature !== nextOutcome) {
+    outcomeSignature = nextOutcome; $('outcome').replaceChildren(); $('outcome').hidden = !content.outcome;
+    if (content.outcome?.length > 450) { const detail = disclosure('Read full summary', JSON.stringify(['outcome', content.outcome])), preview = paragraph(shorten(content.outcome, 280)); preview.hidden = detail.open; detail.addEventListener('toggle', () => { preview.hidden = detail.open; }); detail.append(paragraph(content.outcome)); $('outcome').append(preview, detail); }
+    else if (content.outcome) $('outcome').append(paragraph(content.outcome));
+  }
+  renderWork(data); renderVisual(content); renderActivity(data); renderHistory(data); refreshTimes();
+  $('empty-work').hidden = !!($('work').childElementCount || content.outcome || content.visual_html); $('copy-work').disabled = $('empty-work').hidden === false;
+  if (previousBoundary && previousBoundary !== boundary) { $('activity-panel').open = false; $('history-panel').open = false; window.scrollTo(0, 0); }
+}
+$('adaptive-layout').checked = storageGet('live-canvas-adaptive-layout') !== 'off';
+$('adaptive-layout').onchange = () => { storageSet('live-canvas-adaptive-layout', $('adaptive-layout').checked ? 'on' : 'off'); if (state) renderWork(state, true); };
+$('copy-work').onclick = () => { if (state) copyText(authoredText(state.content), 'Authored work copied'); };
+$('reset-local').onclick = () => { if (state) { resetLocalState(); refreshLocalView(); } $('settings').open = false; announce('Browser-only interactions reset'); };
+$('visual-expand').onclick = () => { const expanded = $('visual').classList.toggle('expanded'); $('visual-expand').textContent = expanded ? 'Reduce' : 'Expand'; };
+const savedTheme = storageGet('session-canvas-theme') || 'auto'; $('theme-select').value = ['auto', 'light', 'dark'].includes(savedTheme) ? savedTheme : 'auto';
+function applyTheme(value) { if (value === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = value; }
+applyTheme($('theme-select').value); $('theme-select').onchange = () => { applyTheme($('theme-select').value); storageSet('session-canvas-theme', $('theme-select').value); };
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('settings').open) { $('settings').open = false; $('settings').querySelector('summary').focus(); } });
+document.addEventListener('click', event => { if ($('settings').open && !$('settings').contains(event.target)) $('settings').open = false; });
+// The fragment is never sent in HTTP requests or retained in the address bar.
+const canvasRoute = document.documentElement.dataset.canvasRoute || '';
+let bootstrapCredential = canvasRoute ? new URLSearchParams(location.hash.slice(1)).get('auth') : null;
+if (canvasRoute) history.replaceState(null, '', canvasRoute);
+async function poll() {
+  try { if (bootstrapCredential) { const auth = await fetch(canvasRoute + '/_auth', { method: 'POST', headers: { Authorization: 'Bearer ' + bootstrapCredential }, credentials: 'same-origin', cache: 'no-store' }); if (!auth.ok) throw Error(auth.status); bootstrapCredential = null; } const response = await fetch(canvasRoute ? canvasRoute + '/state' : 'state', { headers: etag ? { 'If-None-Match': etag } : {}, cache: 'no-store' }); if (response.status !== 304) { if (!response.ok) throw Error(response.status); const next = await response.json(), previous = state; try { render(next); } catch (error) { state = previous; workSignature = outcomeSignature = activitySignature = historySignature = ''; lastVisual = null; if (previous) { try { render(previous); } catch {} } throw error; } etag = response.headers.get('ETag'); } failures = 0; $('connection').dataset.live = 'true'; $('connection-text').textContent = 'Connected'; refreshTimes(); }
+  catch { failures++; $('connection').dataset.live = 'false'; $('connection-text').textContent = state ? 'Reconnecting · saved view' : 'Connecting'; if (!state) $('loading').textContent = 'Canvas unavailable. Start the local server and open its current URL.'; }
+  setTimeout(poll, document.hidden ? 5000 : Math.min(10000, 1000 * Math.max(1, failures)));
+}
+setInterval(refreshTimes, 10000); poll();
+</script>
+</body>
+</html>

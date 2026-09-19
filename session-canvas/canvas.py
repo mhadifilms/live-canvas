@@ -45,8 +45,7 @@ def display_text(text):
 
 
 def home():
-    import library
-    return Path(os.environ.get("SESSION_CANVAS_HOME", str(library.default_home()))).expanduser().resolve()
+    return Path(os.environ.get("SESSION_CANVAS_HOME", str(HERE / ".state"))).expanduser().resolve()
 
 
 def key(thread):
@@ -62,17 +61,6 @@ def read_json(path, default=None):
         return json.loads(path.read_text())
     except (FileNotFoundError, ValueError):
         return default
-
-
-def atomic_bytes(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temp = path.with_name(path.name + '.' + secrets.token_hex(8) + '.tmp')
-    try:
-        with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as f:
-            f.write(value)
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
 
 
 def atomic_json(path, value):
@@ -137,20 +125,11 @@ def mutate(root, thread, action, enabled_only=False):
         state["schema"] = 2
         if enabled_only and not state["enabled"]:
             return None
-        old_archive = json.dumps([state.get("content"), state.get("collaboration"), state.get("presentation"), state.get("board")], sort_keys=True)
-        old_feed_ids = {item["id"] for item in state.get("feed", [])}
         if action(state) is False:
             return state
-        __import__("board").sync_content(state)
         state["revision"] += 1
         state["updated_at"] = now()
         atomic_json(directory / "state.json", state)
-        import library
-        for item in reversed(state.get('feed', [])):
-            if item['id'] not in old_feed_ids:
-                library.record_message(root, thread, item)
-        if old_archive != json.dumps([state.get('content'), state.get('collaboration'), state.get('presentation'), state.get('board')], sort_keys=True) or any(i['id'] not in old_feed_ids and i['kind']=='final' for i in state.get('feed', [])) or not (directory / 'canvas.html').exists():
-            library.snapshot(root, state)
         return state
 
 
@@ -288,8 +267,8 @@ def update_content(root, thread, patch):
 
 def ingest(root, thread, event):
     kind = event.get("kind", "activity")
-    if kind not in {"user", "commentary", "final", "activity"}:
-        raise ValueError("Feed kind must be user, commentary, final, or activity")
+    if kind not in {"commentary", "final", "activity"}:
+        raise ValueError("Feed kind must be commentary, final, or activity")
     text = event.get("text", "")
     if not isinstance(text, str):
         raise ValueError("Feed text must be a string")
@@ -301,7 +280,7 @@ def ingest(root, thread, event):
                 "source": str(event.get("source", "event input"))[:160], "at": now()}
         state["feed"].insert(0, item)
         state["feed"] = state["feed"][:40]
-        if kind in {"user", "commentary", "final"}:
+        if kind in {"commentary", "final"}:
             state["automatic"]["latest_" + kind] = item
         state["activity"] = {"phase": "idle" if kind == "final" else "observed",
                              "label": "Assistant response received" if kind == "final" else "Activity received", "at": item["at"]}
@@ -339,10 +318,6 @@ def transcript_item(event, offset):
     if not isinstance(payload, dict):
         return None
     stamp = event.get("timestamp") or now()
-    if event.get("type") == "event_msg" and payload.get("type") == "user_message":
-        text = payload.get("message")
-        if isinstance(text, str) and text.strip():
-            return {"id": "user:" + str(offset), "kind": "user", "text": text[:12000], "at": stamp, "source": "Task transcript"}
     if event.get("type") == "response_item" and payload.get("type") == "message" and payload.get("role") == "assistant":
         phase = payload.get("phase") or payload.get("channel")
         if phase not in {"commentary", "final_answer", "final"}:
@@ -548,7 +523,7 @@ def make_handler(root, token, instance):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:;  base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
             if etag:
                 self.send_header("ETag", etag)
             if cookie:
@@ -567,7 +542,7 @@ def make_handler(root, token, instance):
             return (not require_origin or bool(origins)) and self.headers.get("Sec-Fetch-Site") != "cross-site"
 
         def clean_route(self):
-            match = re.fullmatch(r"/([a-z0-9][a-z0-9-]*)(?:/(state|_auth|events|archive|board.excalidraw|chat.json|attachment/[a-f0-9]{64}))?", self.path)
+            match = re.fullmatch(r"/([a-z0-9][a-z0-9-]*)(?:/(state|_auth))?", self.path)
             if not match:
                 return None
             task_key = read_json(root / "routes.json", {}).get(match[1])
@@ -592,10 +567,6 @@ def make_handler(root, token, instance):
             return self.send_body(200, body.encode(), "text/html; charset=utf-8", cookie=cookie)
 
         def send_state(self, state):
-            state = dict(__import__("library").display_state(state))
-            import configuration, board
-            settings = configuration.effective(root)
-            state["adaptive"] = {"enabled": bool(settings["enabled"] and settings["key"]), "follow": board.adaptive_enabled(state)}
             etag = '"%s"' % state["revision"]
             if self.headers.get("If-None-Match") == etag:
                 return self.send_body(304, etag=etag)
@@ -604,13 +575,6 @@ def make_handler(root, token, instance):
         def do_GET(self):
             if not self.trusted_request():
                 return self.send_body(403)
-            if self.path.startswith('/board-assets/'):
-                import mimetypes
-                asset_root = HERE / 'board-assets'
-                asset = (asset_root / self.path[len('/board-assets/'):]).resolve()
-                if asset_root.resolve() not in asset.parents or not asset.is_file():
-                    return self.send_body(404)
-                return self.send_body(200, asset.read_bytes(), mimetypes.guess_type(str(asset))[0] or 'application/octet-stream')
             # Old capability links retain their origin and exchange for a task cookie.
             prefix = "/v/" + token + "/"
             if self.path.startswith(prefix):
@@ -634,50 +598,17 @@ def make_handler(root, token, instance):
             if endpoint is None:
                 # Only the generic shell is public; no authored data or task title.
                 return self.shell(route)
+            if endpoint != "state":
+                return self.send_body(404)
             if not self.authorized(task_key):
                 return self.send_body(403)
             state = read_json(root / "tasks" / task_key / "state.json")
-            if not state:
-                return self.send_body(404)
-            if endpoint in {'board.excalidraw','chat.json'}:
-                return self.send_body(200, (root / 'tasks' / task_key / endpoint).read_bytes(), 'application/json')
-            if endpoint == 'archive':
-                return self.send_body(200, (root / 'tasks' / task_key / 'canvas.html').read_bytes(), 'text/html; charset=utf-8')
-            if endpoint and endpoint.startswith('attachment/'):
-                file_id = endpoint.split('/')[1]
-                if not any(e.get('file_id') == file_id for e in state.get('collaboration', {}).get('events', [])):
-                    return self.send_body(404)
-                path = root / 'tasks' / task_key / 'attachments' / file_id
-                if not path.is_file(): return self.send_body(404)
-                return self.send_body(200, path.read_bytes(), 'application/octet-stream')
-            return self.send_state(state) if endpoint == 'state' else self.send_body(404)
+            return self.send_state(state) if state else self.send_body(404)
 
         do_HEAD = do_GET
 
         def do_POST(self):
             resolved = self.clean_route()
-            if resolved and resolved[2] == 'events':
-                if not self.trusted_request(require_origin=True) or not self.authorized(resolved[0]):
-                    return self.send_body(403)
-                lengths = self.headers.get_all('Content-Length', [])
-                if self.headers.get('Transfer-Encoding') or len(lengths) != 1 or self.headers.get('Content-Type') != 'application/json':
-                    return self.send_body(400)
-                try:
-                    size = int(lengths[0])
-                    if not 0 < size <= 9 * 1024 * 1024: return self.send_body(413)
-                    self.connection.settimeout(5)
-                    raw = self.rfile.read(size)
-                    if len(raw) != size: return self.send_body(400)
-                    data = json.loads(raw)
-                    state = read_json(root / 'tasks' / resolved[0] / 'state.json')
-                    if not state: return self.send_body(404)
-                    import collaboration, board
-                    result = board.update(root, state['thread'], data) if isinstance(data, dict) and data.get('kind') == 'board' else collaboration.submit(root, state['thread'], data)
-                    return self.send_body(200, json.dumps(result).encode(), 'application/json')
-                except __import__('board').Conflict:
-                    return self.send_body(409, b'Object changed elsewhere; local edits are preserved')
-                except (ValueError, TypeError, KeyError, OSError, TimeoutError):
-                    return self.send_body(400, b'Feedback could not be saved; check its size and fields')
             if not resolved or resolved[2] != "_auth":
                 return self.send_body(405, b"Read-only viewer")
             if not self.trusted_request(require_origin=True):
@@ -767,8 +698,6 @@ def status_summary(state, limit=SUMMARY_MAX):
         "current": _preview(content.get("current")),
         "outcome": _preview(content.get("outcome")),
         "sections": [],
-        "feedback": __import__("collaboration").summary(state),
-        "board": {"objects": len(state.get("board", {}).get("elements", [])), "human_revision": state.get("board", {}).get("human_revision", 0), "human_edits": __import__("board").feedback(state)},
         "truncated": False,
     }
     digest["truncated"] = any(_clipped(content.get(field), limit)
@@ -806,8 +735,6 @@ def status_summary(state, limit=SUMMARY_MAX):
             digest["sections"][-1]["previews"].pop()
         elif digest["sections"]:
             digest["sections"].pop()
-        elif digest["feedback"]:
-            digest["feedback"].pop(0)
         else:
             break
         digest["truncated"] = True
@@ -847,10 +774,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", help="Private persistent state directory")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("start", "status", "update", "stop", "hook", "feed", "board"):
+    for name in ("start", "status", "update", "stop", "hook", "feed"):
         child = sub.add_parser(name)
         child.add_argument("--thread", help="Defaults to CODEX_THREAD_ID; never guessed from working directory")
-        if name in {"update", "hook", "feed", "board"}:
+        if name in {"update", "hook", "feed"}:
             child.add_argument("--file", help="JSON input file; otherwise read stdin")
         if name == "start":
             child.add_argument("--title")
@@ -904,7 +831,7 @@ def main():
                 root, thread, args.claim, opened=args.action == "opened")
             print(json.dumps(result))
             return 0
-        data = read_input(args.file) if args.command in {"hook", "feed", "update", "board"} else {}
+        data = read_input(args.file) if args.command in {"hook", "feed", "update"} else {}
         thread = args.thread or os.environ.get("CODEX_THREAD_ID")
         if not thread and args.command in {"hook", "feed"}:
             thread = data.get("thread_id") or data.get("session_id")
@@ -918,10 +845,6 @@ def main():
         if args.command == "feed":
             state = ingest(root, thread, data)
             print(json.dumps({"ingested": state is not None}))
-            return 0
-        if args.command == "board":
-            result = __import__('board').update(root, thread, data, actor='agent')
-            print(json.dumps({'saved': True, 'revision': result['revision'], 'board_revision': result['board']['revision']}))
             return 0
         if args.command == "update":
             state = update_content(root, thread, data)
@@ -962,9 +885,7 @@ def main():
                           "server_running": None if health_unavailable else bool(info),
                           "server_status": "health unavailable: local networking blocked" if health_unavailable else "running" if info else "stopped",
                           "url": viewer_url(info, thread, root) if info and state else None,
-                          "state_file": str(task_dir(root, thread) / "state.json"),
-                          "html_file": str(task_dir(root, thread) / "canvas.html"),
-                          "chat_reference": str(task_dir(root, thread) / "chat.json") }, indent=2))
+                          "state_file": str(task_dir(root, thread) / "state.json")}, indent=2))
         return 0
     except Exception as exc:
         if args.command == "hook":

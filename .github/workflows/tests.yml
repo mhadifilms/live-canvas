@@ -23,9 +23,3 @@ jobs:
       - name: Check viewer helpers with Node's built-in test runner
         if: matrix.python-version == '3.12'
         run: node --test session-canvas/test_viewer.mjs
-      - name: Build bundled shared-board editor
-        if: matrix.python-version == '3.12'
-        run: |
-          npm ci --prefix board --ignore-scripts
-          npm run build --prefix board
-          git diff --exit-code -- session-canvas/index.html session-canvas/board-assets
