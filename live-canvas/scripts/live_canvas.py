@@ -6,6 +6,8 @@ import re
 import sys
 
 bundle = Path(__file__).resolve().parents[2]
+if not (bundle / "session-canvas/canvas.py").exists() and (bundle.parent / "session-canvas/canvas.py").exists():
+    bundle = bundle.parent
 runtime = bundle / "session-canvas" / "canvas.py"
 args = sys.argv[1:]
 def take_option(name):
@@ -39,8 +41,8 @@ command = args[command_index] if command_index < len(args) else None
 global_command = command in {"shutdown", "_serve", "adaptive", "configure"} or (command == "auto-open" and
     command_index + 1 < len(args) and args[command_index + 1] in {"on", "off", "status"})
 if (client or session) and not global_command:
-    if client not in {"claude", "cursor", "codex"} or not session or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
-        raise SystemExit("Use --client codex|claude|cursor and the exact --session-id from SessionStart")
+    if client not in {"claude", "cursor", "codex", "opencode"} or not session or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
+        raise SystemExit("Use --client codex|claude|cursor|opencode and the exact --session-id from SessionStart")
     if any(arg == "--thread" or arg.startswith("--thread=") for arg in args):
         raise SystemExit("Do not combine a client session with --thread")
     if client != "codex" and any(arg == "--transcript" or arg.startswith("--transcript=") for arg in args):

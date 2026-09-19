@@ -9,7 +9,7 @@ import canvas
 MAX_CALLS = 10000
 MAX_BYTES = 60000000
 REQUEST_BYTES = 6000
-FIELDS = {"schema", "revision", "api_key", "daily_calls", "daily_bytes", "typesafe", "auto_open", "clients"}
+FIELDS = {"schema", "revision", "api_key", "daily_calls", "daily_bytes", "typesafe", "auto_open", "clients", "rich_context"}
 
 
 def location(root):
@@ -23,7 +23,7 @@ def validate(value):
     for name, maximum in (("daily_calls", MAX_CALLS), ("daily_bytes", MAX_BYTES)):
         if name in value and (type(value[name]) is not int or not 0 <= value[name] <= maximum):
             raise ValueError(name + " must be an integer between 0 and " + str(maximum))
-    for name in ("typesafe", "auto_open"):
+    for name in ("typesafe", "auto_open", "rich_context"):
         if name in value and type(value[name]) is not bool:
             raise ValueError(name + " must be a boolean")
     if "revision" in value and (type(value["revision"]) is not int or value["revision"] < 0):
@@ -33,7 +33,7 @@ def validate(value):
                                any(ord(char) < 33 or ord(char) > 126 for char in value["api_key"])):
         raise ValueError("API key must contain only printable non-space ASCII characters (maximum 4096)")
     if "clients" in value and (not isinstance(value["clients"], list) or
-                               any(client not in ("codex", "claude", "cursor") for client in value["clients"])):
+                               any(client not in ("codex", "claude", "cursor", "opencode") for client in value["clients"])):
         raise ValueError("Unknown client selection")
     return value
 
@@ -73,6 +73,7 @@ def effective(root, environ=None, saved=None):
             return default
     calls = limit("LIVE_CANVAS_TYPESAFE_DAILY_CALLS", saved.get("daily_calls", MAX_CALLS), MAX_CALLS)
     return {"enabled": env["LIVE_CANVAS_TYPESAFE"] == "1" if "LIVE_CANVAS_TYPESAFE" in env else saved.get("typesafe", legacy.get("typesafe", False)) is True,
+            "rich_context": saved.get("rich_context", False),
             "auto_open": saved.get("auto_open", legacy.get("auto_open", True)) is not False,
             "key": env.get("TYPESAFE_API_KEY", saved.get("api_key", "")),
             "key_source": "environment" if "TYPESAFE_API_KEY" in env else "saved" if saved.get("api_key") else "none",
@@ -116,7 +117,7 @@ def status(root):
             "credential_storage": "plaintext; user-owned directory 0700 and file 0600",
             "saved_key_present": bool(saved.get("api_key")),
             "key_present": bool(settings["key"]), "key_source": settings["key_source"],
-            "typesafe": settings["enabled"], "auto_open": settings["auto_open"],
+            "typesafe": settings["enabled"], "rich_context": settings["rich_context"], "auto_open": settings["auto_open"],
             "daily_calls": settings["daily_calls"], "daily_bytes": settings["daily_bytes"],
             "clients": saved.get("clients", []),
             "environment_overrides": [name for name in ("TYPESAFE_API_KEY", "LIVE_CANVAS_TYPESAFE", "LIVE_CANVAS_TYPESAFE_DAILY_CALLS", "LIVE_CANVAS_TYPESAFE_DAILY_BYTES") if name in os.environ]}

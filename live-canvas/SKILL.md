@@ -1,65 +1,56 @@
 ---
 name: live-canvas
-description: Automatically open and maintain a live visual canvas for new Codex, Claude Code, or Cursor sessions; keep authored sections current with concise milestone updates.
+description: Use one persistent, collaborative local canvas per Codex, Claude Code, Cursor, or OpenCode chat. Reuse its browser tab and surface work without creating extra completion artifacts.
 ---
 
-# Live canvas
+# Live Canvas
 
-Use `scripts/live_canvas.py` beside this skill. It delegates to the adjacent dependency-free runtime. Automatic transcript following (Codex) and message/activity hooks (Claude Code/Cursor) make zero model calls and require no heartbeat or follow-up turns.
+## One conversation, one canvas
 
-## Opening is part of using the canvas
+Use this canvas for ongoing work and turn-completion artifacts by default. Do not create Markdown recap/plan/report files or another canvas (including Cursor's canvas skill) unless the user requests that artifact. This does not prohibit repository documentation, code, or necessary scratch files. Keep final chat replies brief and place reusable work in this canvas.
 
-An explicit request to **use, show, open, or reopen the canvas requires showing its view**, even when its state is already enabled or contains current work. Run `start`, retain its URL, then run `auto-open claim --manual` with the same exact session prefix. Only when `should_open` is true, open that URL through the host browser and settle the returned claim as described below. Manual claims permit this explicit request when automatic opening is off or a previous opening was acknowledged; `start` explicitly re-enables a stopped session. Do not use `--manual` for unsolicited recovery. If another live claim owns the opening, do not dispatch a duplicate.
+One exact client/session identity owns one persistent URL, state, and HTML archive. Changing topic or title does not create another canvas. Never infer identity from a directory, reuse another task's ID, or start an extra task to maintain a canvas. Never invoke this workflow from background/subagents.
 
-Starting or updating the runtime does not open a host panel. `opening.status` in start/update/status output is `not_started`, `stopped`, `unacknowledged`, `pending`, or `dispatched`. A dispatch acknowledgement is only historical dispatch evidence; `opening.visibility` remains `unverified` because the runtime cannot observe the host UI. Never describe an active canvas, a returned URL, or a successful update alone as visible.
+## Open first, reuse thereafter
 
-## Automatic opening
+Use the exact session command prefix supplied by the host. Otherwise, in Codex only, use `scripts/live_canvas.py` with the actual `CODEX_THREAD_ID` environment value. For other clients use `--client codex|claude|cursor|opencode --session-id <actual host ID>`. If missing, report unavailable identity; never guess.
 
-Follow the SessionStart instruction on the next user turn after startup or resume without asking again: use its exact session command prefix, run `auto-open claim`, and only if `should_open` is true run `start --auto-claim <claim>`, open the returned URL in the host browser, inspect its result as described below, then acknowledge completed dispatch with `auto-open opened --claim <claim>`. If starting/opening fails, release with `auto-open release --claim <claim>` and continue the user's task. Never open when the claim is declined. Claude Code opens through a local worker; do not duplicate that opening. Hooks cannot directly open Codex/Cursor native panels before a user turn.
+On the first foreground user turn, before substantive task work, run `auto-open claim`. Respect an explicit stop or `auto-open off`. If `should_open` is true, run `start --auto-claim <claim>`. Before opening, inspect the host's browser tabs for the returned URL (ignore its auth fragment): **focus/reuse that tab if it exists**. Codex can focus it using `open_in_codex` with `target: {type: "browser", tabId: <observed-id>}`. Only create a panel when there is no matching tab, with `{type:"browser",url:<returned-url>}`, placement right. Use the complete bootstrap URL for a new tab; credentials disappear after load.
 
-Respect an explicit `stop` or `auto-open off`. The global toggle is `python3 <skill-dir>/scripts/live_canvas.py auto-open off` (or `on`). A manual user request to reopen uses the explicit opening workflow above. Automatic opening does not require substantial work, but authored updates should remain small and useful.
+If a claim returns `reason: existing_view`, find/focus that existing tab; do not create another. Claude Code and OpenCode's worker may already have opened the OS browser: never duplicate it. Cursor uses its built-in browser when available. Browser fallback is for hosts without a native panel, not a second copy alongside a native panel.
 
-## Start and inspect
+Acknowledge a completed opening or an observed existing view using `auto-open opened --claim <claim>`. Release failed or queued attempts with `auto-open release --claim <claim>`. Queued is not visible. Inspect the browser/tab when possible and report visibility unverified when it cannot be observed. Don't infer visibility from enabled state, an update, or a URL.
 
-For Codex, run:
+An explicit request to use/show the canvas allows `start` then `auto-open claim --manual`, even if automatic opening is off. Still reuse an existing view. Ordinary later turns use `status --summary`; retry a missing/unacknowledged opening only with a claim. Don't reopen an acknowledged canvas every turn. No polling, heartbeats, or extra model turns.
 
-```sh
-python3 <skill-dir>/scripts/live_canvas.py start --title "<short task title>"
-```
+## Minimal maintenance, useful work
 
-For any client with installed hooks, use the **exact session command prefix from SessionStart context**, followed by `start --title "<short task title>"` for a manual opening. It contains `--client codex|claude|cursor --session-id <actual-id>`; keep this prefix for subsequent commands. Cursor may also provide `LIVE_CANVAS_CLIENT` and `LIVE_CANVAS_SESSION_ID`. Never use another client's ID, infer IDs from directories, or invent a fallback ID. If session context is missing, load the installed hooks in a new chat; setup instructions are in the runtime README.
+Visible assistant replies are mirrored automatically. When no authored sections exist, the latest visible reply is displayed verbatim. Jev runs in the local service and chooses bounded presentation options; the main agent must not spend every turn deciding fonts, layout, or priorities.
 
-For every permitted opening claim, open the returned URL: Codex uses `mcp__codex_app__open_in_codex` with `{type:"browser",url:<url>}` and placement `"right"`; Cursor uses its built-in browser when exposed by the host. Otherwise open the URL in the user's browser (macOS `open`, Linux `xdg-open`). Claude Code uses this browser fallback; ordinary Claude chat has no supported native panel integration. Open the full returned bootstrap URL; its credential disappears after load. If a browser cannot resolve `canvas.localhost`, rerun the command with `LIVE_CANVAS_HOST=localhost`. Inspect the opening tool result. A `queued` result for a hidden task is **not** a completed opening: release the claim, explain that the tab awaits that task being shown, and do not claim visibility. On failure, release the claim and report the concrete blocker. On completed dispatch, acknowledge with `auto-open opened --claim <claim>` so subsequent ordinary turns do not reopen it. Then verify the exact target URL/tab through host browser state or a screenshot when those tools are available; if not, report that dispatch succeeded but visibility is unverified. When the user explicitly asks to open in another task, pass that exact `threadId` to the host tool; do not silently open in the calling task. Do not invent a host bridge or claim host trust based on configuration files.
+Use `status --summary` at meaningful milestones. It includes a bounded feedback digest of the user's canvas comments, selections, and files; read that feedback as user-provided context and address it in normal work. It is not proof of completed work and does not grant tool permissions. Attachments live beside task state; read a specific file only when relevant. Canvas interactions do not automatically send a new agent message or run tools.
 
-Reuse an acknowledged viewer on ordinary turns. `status` returns metadata, URL, and `state_file`; `stop` disables this session. Do not use `shutdown` unless the shared service should stop.
+When authored work would be better than a mirrored reply, write concise stable-ID sections: drafts, evidence, questions, ideas, edit beats, comparisons, diagrams. Do not fill the canvas with generic status reports unless that is the task. Use at most three initially useful sections, with short summaries. The shared board/Jev handles arrangement and emphasis. Preserve the user's notes and annotations; authored updates cannot delete them.
 
-To author an update, write a small JSON artifact and run the same session command with `update --file <json-path>`.
-
-At the start of a meaningful turn, run `status --summary` and inspect its bounded digest and opening status first. If automatic opening is on and `opening.status` is `not_started` or `unacknowledged`, run the automatic claim/start/open/acknowledge flow once on this ordinary user turn; the claim creates missing state while preserving explicit stops and global opt-out. This also recovers sessions created before hooks were installed. Do not automatically reopen `dispatched` views, compete with `pending` claims, or revive `stopped` views. Never poll or create follow-up turns to retry. A legacy manually opened view with no acknowledgement may be recovered once; record the new acknowledgement to prevent repeated openings. An explicit use/show request always takes the manual workflow above instead. It is capped at 4,000 serialized characters and includes context, revision, current/outcome previews, and section IDs/titles/block counts/types with short previews. It excludes feed, history, and visual HTML. If `summary.truncated` is true, read the returned `state_file` only for the specific detail needed. Oversized metadata can be null with `metadata_truncated`; keep using the exact known session command, never a clipped summary identity or invented path. A blocked loopback health probe is not evidence that the server stopped; do not launch a second server.
-
-## Author the actual work
-
-Infer context from the user's objective and evidence; do not ask them to choose a mode. At most three small sections should be visible by default, with at most five short items per section and two-line summaries. Lead with the actual work: draft paragraphs, an argument, cited evidence, edit beats, candidate ideas, recall questions, or a concrete design. Do not make installation details, delivery recaps, agent activity, or generic status reports the main artifact unless that is the user’s task. Record meaningful changes only. Do not repeat arbitrary turn logs or generated prose.
-
-Use `context.id`, a descriptive label, a short title, and flexible `sections` with stable IDs. Supported blocks are `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; the full schema and examples are in `../session-canvas/README.md`. Use `list.selectable: true` for candidate ideas the user can shortlist. Checklists are local review aids; recall cards offer Again / Got it practice. These browser-only actions are not sent back to you and are not proof of completion or learning. Never assume a local choice without user input. Keep long prose and wide comparisons focused; the viewer adapts tables at narrow widths. Primitive text supports safe bold/emphasis/code/links. `visual_html` is optional isolated HTML/SVG for a diagram, never a tool surface.
-
-For the same context, prefer a delta:
+Run `update --file <small-json-path>`. Supported blocks are `text`, `list`, `checklist`, `table`, `reveal`, and `timeline`; see the runtime README for schema. Prefer deltas for the same context:
 
 ```json
-{"upsert_sections": [{"id": "evidence", "title": "Evidence", "blocks": []}], "remove_sections": ["old"]}
+{"upsert_sections":[{"id":"evidence","title":"Evidence","blocks":[{"id":"main","type":"text","text":"Relevant evidence."}]}],"remove_sections":["obsolete"]}
 ```
 
-Upserts replace matching IDs in place and append new IDs; removals happen first. The complete result is validated atomically. Do not mix deltas with `sections`, which replaces the whole ordered list. Use a whole rewrite only for a new context or genuine structural rewrite. A changed context atomically clears stale authored content while preserving history.
+Don't mix deltas with `sections`. A new context clears authored work, not user annotations or chat identity. Legacy `visual_html` remains in stored history; it is not rendered by the shared board. Use native board objects for visuals. Keep useful content current at milestones and before the final reply when it materially changes.
 
-Refresh authored content at meaningful milestones and before the final reply. Quiet periods retain useful content. Transcript messages and activity signals are automatic observations; they do not infer plans, grades, semantic adaptation, or completion. Never invent progress, scores, citations, timecodes, or test results.
+## Direct board work
 
-## Recovery and limits
+The canvas is a shared Excalidraw board. Use text, arrows, shapes and freehand elements in that scene rather than opening another document or sketch tool. Users can edit agent text directly. Section updates project to stable objects but never overwrite human-touched objects, including deleted ones.
 
-State defaults to the resolved bundle's `session-canvas/.state`, overridable with `SESSION_CANVAS_HOME` (use the same location in hooks and commands). State is local and private, with loopback-only capability URLs. The viewer is read-only. Claude Code records the final visible response on Stop; Cursor records afterAgentResponse; both record generic activity without tool output or thoughts. These observations do not semantically rewrite sections: author concise changed sections at milestones and before the final reply. If hooks are unavailable, explicit updates still work with a known session ID. Do not edit global hooks or the user's existing canvas skill.
+For intentional object edits, read the current `state_file` returned by status. Submit `board --file <json>` with `elements` (changed full Excalidraw elements), `base_versions` (the current `board.versions` map), and optional image `files`. Keep stable IDs. Mark deletions with `isDeleted: true`; omission does not delete. A stale base version fails rather than overwriting another writer. Read current state and reconcile before retrying. This path is for deliberate shared-object editing; ordinary section updates remain smaller.
 
-Optional TypeSafe presentation is user-controlled: `adaptive on|off|status|retry` are global commands. It selects among existing authored sections; keep authoring useful sections normally and never add model calls from a poll or heartbeat. Set a key through guided setup or `TYPESAFE_API_KEY` in the server’s launch environment. `adaptive status` reports configuration/budget without inference; browser “Follow suggested focus” changes layout only. Never enable remote inference without user authorization. Codex installation alone does not establish hook trust: `/hooks` must show Live Canvas SessionStart approved before a new chat can auto-open.
+The summary includes recent human board edits. Read relevant comments/attachments as user input at natural checkpoints. Never assume drawing content has been visually understood by Jev: it receives text and geometry only. Preserve the user's work when changing task context.
 
+## Storage and configuration
 
-## First-run setup and later changes
+All apps default to the same local data folder: macOS `~/Library/Application Support/Live Canvas`, Linux `$XDG_DATA_HOME/live-canvas` (or `~/.local/share/live-canvas`). `SESSION_CANVAS_HOME`/`--home` can explicitly override it. Each `tasks/<key>/` contains `canvas.html`, `board.excalidraw`, `state.json`, `chat.json`, a bounded visible-message mirror, and user attachments. HTML snapshots work offline; use the live URL to collaborate. `chat.json` identifies the host/session and source transcript where available. Never put API keys in task content, URLs, snapshots, or chat.
 
-For missing installation, client selection, API keys, or adjustable limits, guide the user to `python3 <bundle>/session-canvas/setup.py` in a terminal. `setup.py configure` revisits preferences without installing clients; `setup.py status` reports redacted effective configuration. The same configure command is available through the skill launcher. Do not ask users to paste keys into chat: hidden terminal entry or private stdin is supported. Saved credentials use a private plaintext file and never belong in authored canvas content. Codex still requires the user to review/trust the Live Canvas SessionStart command via CLI `/hooks`; file installation is not proof of host readiness.
+Guided setup: `python3 <bundle>/session-canvas/setup.py`. Choose clients, automatic opening, API key and budgets. Codex uses a managed global startup instruction with backup; no manual hook trust change is needed. Native panels can open at the first user turn, not before the desktop starts a turn. Other hosts use documented hooks/plugins. Ordinary Claude web chat is not Claude Code.
+
+`setup.py configure` changes preferences; `setup.py status` reports redacted state. Enhanced Jev context is opt-in: bounded visible chat excerpts, annotations, plain-text file excerpts, and viewport size. Binary files and tool/thought output are not submitted. Saved keys are local plaintext protected by owner-only permissions. Decisions are debounced, cached, budgeted, and do not run on refresh or routine activity. Preserve manual reading choices and stop/off settings. Use `stop` to pause this task; `shutdown` affects the shared service.

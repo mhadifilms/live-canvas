@@ -53,6 +53,8 @@ def commands(value):
 
 
 def plan(user_home, client, uninstall=False):
+    if client == "opencode":
+        return __import__("opencode_install").plan(user_home, uninstall)
     base = user_home / {"claude": ".claude", "cursor": ".cursor", "codex": ".codex"}[client]
     if client == "codex" and user_home == Path.home().resolve() and os.environ.get("CODEX_HOME"):
         base = Path(os.environ["CODEX_HOME"]).expanduser().resolve()
@@ -137,6 +139,8 @@ def backup(path, base):
 
 
 def apply(item):
+    if item["client"] == "opencode":
+        return __import__("opencode_install").apply(item)
     base, path, manifest = item["base"], item["config_path"], item["manifest"]
     if item["uninstall"] and not manifest:
         return {"client": item["client"], "changed": False, "status": "not installed"}
@@ -168,37 +172,31 @@ def apply(item):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("dry-run", "check", "install", "uninstall"))
-    parser.add_argument("--client", choices=("codex", "claude", "cursor", "both", "all"), default="all")
+    parser.add_argument("--client", choices=("codex", "claude", "cursor", "opencode", "both", "all"), default="all")
     parser.add_argument("--user-home", type=Path, default=Path.home(), help="Override the user home (also useful for fixtures)")
     args = parser.parse_args(argv)
     try:
-        clients = ["codex", "claude", "cursor"] if args.client == "all" else (
+        clients = ["codex", "claude", "cursor", "opencode"] if args.client == "all" else (
             ["claude", "cursor"] if args.client == "both" else [args.client])
         user_home = args.user_home.expanduser().resolve()
-        # Preflight every target before changing any of them.
-        plans = [plan(user_home, client, args.action == "uninstall") for client in clients]
-        if args.action in {"dry-run", "check"}:
-            print(json.dumps({"action": args.action, "clients": [
-                {"client": item["client"], "installed": item["installed"], "config": str(item["config_path"]),
-                 "skill": str(item["skill_path"]), "source": str(SKILL), "events": list(entries(item["client"])),
-                 "host_requirement": "Enable Codex hooks with: codex features enable hooks" if item["client"] == "codex" else None,
-                 "readiness": "requires_host_verification" if item["client"] == "codex" else "files_checked",
-                 "next_step": "In Codex /hooks, review and trust Live Canvas SessionStart; then open a new chat and send its first message." if item["client"] == "codex" else "Start a new host session to verify hook loading.",
-                 "would_change_config": item["original"] != item["updated"]} for item in plans]}, indent=2))
-            return int(args.action == "check" and not all(item["installed"] for item in plans))
-        results = []
+        def client_plan(client):
+            if client == 'codex':
+                import codex_startup
+                return codex_startup.uninstall_plan(user_home) if args.action == 'uninstall' else codex_startup.plan(user_home)
+            return plan(user_home, client, args.action == 'uninstall')
+        plans = [client_plan(client) for client in clients]
+        if args.action in {'dry-run','check'}:
+            print(json.dumps({'action':args.action,'clients':[{'client':p['client'],'installed':p['installed'],'config':str(p['config_path']),'readiness':'requires_host_verification','next_step':'Start a new foreground task and verify its first-turn browser opening.','would_change_config':p['original']!=p['updated']} for p in plans]},indent=2))
+            return int(args.action == 'check' and not all(p['installed'] for p in plans))
+        results=[]
         for item in plans:
-            item["base"].mkdir(mode=0o700, parents=True, exist_ok=True)
-            with canvas.locked(item["base"] / ".live-canvas-install.lock"):
-                fresh = plan(user_home, item["client"], args.action == "uninstall")
-                # Refuse changes since preflight, including edits by another installer.
-                if fresh != item:
-                    raise ValueError("Configuration changed during preflight; retry after reviewing it")
-                results.append(apply(fresh))
-        for result in results:
-            if result["client"] == "codex" and args.action == "install":
-                result["readiness"] = "requires_host_verification"
-                result["next_step"] = "In Codex /hooks, review and trust Live Canvas SessionStart; then open a new chat and send its first message."
+            item['base'].mkdir(mode=0o700,parents=True,exist_ok=True)
+            with canvas.locked(item['base']/'.live-canvas-install.lock'):
+                if client_plan(item['client']) != item:raise ValueError('Configuration changed during preflight; retry after reviewing it')
+                if item.get('startup_instruction'):
+                    import codex_startup
+                    results.append(codex_startup.uninstall(item) if args.action == 'uninstall' else codex_startup.apply(item))
+                else:results.append(apply(item))
         print(json.dumps({"action": args.action, "clients": results}, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, TimeoutError) as exc:

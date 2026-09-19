@@ -1,156 +1,79 @@
 # Live Canvas
 
-A small, local workspace beside your AI conversation. Keep the actual work visible: an outline, evidence, decisions, study questions, edit beats, or a diagram. The assistant updates authored sections at meaningful milestones; lightweight local adapters bring in activity and visible responses automatically.
+One shared board beside your AI conversation. Draw, write, move things around, drop files, and work on the same objects as your agent. The board stays with the conversation and saves locally.
 
-Python standard library only. Default local mode needs no API key, packages, hosted service, or background model calls. Optional TypeSafe integration can select a focus section from existing authored work. The viewer has light and dark themes, six flexible content blocks, and useful browser-local interactions. It never writes back to the assistant or runtime.
+Live Canvas embeds [Excalidraw](https://excalidraw.com), with direct text editing, shapes, arrows, freehand drawing, selection, resizing, undo, and pan/zoom. There is no separate sketch dialog. Agent-authored sections become editable board objects. Human edits and deletions are protected from automatic updates.
 
-![Live Canvas running beside a conversation in the Codex desktop app](docs/images/live-canvas-codex.png)
+![Desktop panel placement, shown with the earlier document viewer](docs/images/live-canvas-codex.png)
 
-## Supported clients
-
-| Client | Automatic observations | Viewer |
-| --- | --- | --- |
-| Codex | SessionStart instruction plus registered local transcript | Right-hand Codex browser panel on the first user turn |
-| Claude Code | Command hooks: generic activity and the final visible response on `Stop` | OS browser automatically at foreground session startup |
-| Cursor | Command hooks: generic activity and `afterAgentResponse` text | Built-in browser on the first user turn when exposed; otherwise OS browser |
-
-This package targets local macOS and Linux environments with Python 3.9+. Windows is not supported by the runtime's file-locking implementation. Ordinary Claude chat has no native integration. Remote environments need their own installation and access to the loopback viewer.
-
-## Quick start
+## Install
 
 ```sh
 git clone https://github.com/mhadifilms/live-canvas.git
 cd live-canvas
-```
-
-Run the guided setup in a terminal:
-
-```sh
 python3 session-canvas/setup.py
 ```
 
-Choose **Codex, Cursor, Claude Code, or a combination**. Setup asks whether to open canvases automatically, whether to use optional TypeSafe focus, and your daily limits. Local-only mode needs no account or key. For TypeSafe, sign in or create an account, then get an API key from the [TypeSafe dashboard](https://console.typesafe.ai/settings/keys), then paste the key into the hidden terminal prompt. Setup explains the remote data sharing before enabling it.
+Choose your apps, automatic opening, and optional Jev assistance. No account or API key is needed for a local board. The editor assets are bundled; running it needs Python 3.10+ on macOS or Linux, with no Node installation or CDN connection. Keep the checkout in place after setup.
 
-The key is stored in a private local configuration file with owner-only permissions. It is plaintext on disk, not encrypted or stored in an OS keychain. It never appears in the browser, task content, or status output. An existing `TYPESAFE_API_KEY` environment variable takes precedence; setup reports that source without revealing the key. Keep the checkout in place because hooks reference it.
+| App | Startup | Conversation capture |
+| --- | --- | --- |
+| Codex Desktop | Managed startup instruction opens the app browser on the first user turn | Registered local transcript |
+| Claude Code | Foreground session hook opens the OS browser | Visible replies and user prompts through hooks |
+| Cursor | Native browser when the agent has that tool; OS browser fallback | Documented command hooks |
+| OpenCode | Global plugin opens the OS browser | Visible messages at session idle |
 
-**Finish the selected host's setup:**
+Codex setup backs up its global instructions and removes only unchanged Live Canvas-owned legacy hooks. It does not alter hook trust records or require a CLI trust command. Opening still depends on the agent following the startup instruction: Codex does not expose a supported way for this package to open its panel before the first turn starts. Ordinary Claude web chat and Windows are not supported.
 
-| Client | Required next step |
-| --- | --- |
-| Codex | Run `codex features enable hooks` if needed. In Codex CLI, open `/hooks` and trust only the Live Canvas **SessionStart** entry containing `session-canvas/client_hooks.py`. Start a new desktop chat and send a message. |
-| Cursor | Restart Cursor if necessary. Check the **Hooks** tab / Hooks output channel, then send a message in a new Agent conversation. |
-| Claude Code | Restart Claude Code if necessary, review the installed hooks with `/hooks`, then begin a new foreground session. The canvas opens in your OS browser. |
+Host integrations use one board per exact conversation identity and check for an existing view before opening. `stop` and `auto-open off` remain respected. Host-specific hooks/plugins may require restarting the app and reviewing its normal integration permissions. OpenCode is covered by adapter tests; a live OpenCode host must still confirm plugin loading.
 
-Codex and Cursor receive an instruction to open their panel on the first user turn; clicking a blank new-chat button alone cannot open a native panel. Setup does not bypass host trust or claim a hook executed merely because its files are installed. Ordinary Claude chat and cloud agents are not supported by this local installation.
+## Work together
 
-Change configuration later or inspect it without making API calls:
+Use the editor tools directly on the board. Double-click text to edit; draw to annotate or highlight; drag objects to organize them. Drop images onto the board and other files to attach them. Text objects can hold comments beside the work they refer to. Links navigate in the current browser panel. **Fit** gives an overview; a narrow pane initially focuses a readable group rather than shrinking the entire board into illegible text.
+
+Changes save automatically. Concurrent changes to different objects merge. If two writers change the same object, the board keeps your unsaved work and offers an editable download before you reload. Human edits are never silently replaced by an agent projection or Jev layout change. Canvas input is available to the agent at its next normal checkpoint; it does not secretly send a new chat message or trigger tools.
+
+The agent reuses this board for drafts, study material, evidence, brainstorming, code plans, and edit notes. It should not create completion-summary Markdown files or another canvas unless asked. The latest visible response is mirrored when no authored board content exists. A real spatial board can grow beyond the viewport; pan/zoom remain available rather than hiding your work to promise zero scrolling.
+
+## Local storage
+
+All apps use the same data root:
+
+- macOS: `~/Library/Application Support/Live Canvas`
+- Linux: `$XDG_DATA_HOME/live-canvas` (default `~/.local/share/live-canvas`)
+
+Each conversation has a unique readable URL and a `tasks/<key>/` folder containing `state.json`, an offline `canvas.html` snapshot, an editable `board.excalidraw`, `chat.json`, visible conversation text, and attachments. `chat.json` records the app/session and original transcript path when available. Snapshots are simplified static SVG; the editable file preserves the full scene.
+
+For an older installation using `session-canvas/.state`, stop its server, back up the folder, and move it into the shared root before restarting. Do not merge two populated roots blindly. `--home` or `SESSION_CANVAS_HOME` can deliberately override storage.
+
+The initial private URL exchanges its credential for an HttpOnly, SameSite cookie and clears the fragment immediately. Clean URLs alone grant no access. Writes require the same origin and task authentication. State and saved keys have owner-only permissions; other processes running as the same OS user are outside this security boundary.
+
+## Optional Jev / TypeSafe
+
+Jev judges priorities, grouping, spacing, restrained emphasis colors, and suitable text style. It arranges only untouched agent objects; anything you edit stays put. Decisions run in the local background service after meaningful changes settle, with caching and shared daily caps. Pointer motion, refreshes, and connection heartbeats do not trigger decisions. There are no extra main-agent turns.
+
+Setup explains what leaves your device. Basic mode sends bounded authored excerpts. Enhanced context additionally sends bounded visible chat text, board text and geometry, selections, viewport size, and text-file excerpts. Images, binary attachments, tool results, and reasoning are never sent to Jev. A drawing is represented by its type/bounds, not visually interpreted.
+
+Get an optional key from the [TypeSafe dashboard](https://console.typesafe.ai/settings/keys), then use the hidden setup prompt. Keys stay in the local service, never the board or repository. Saved keys are plaintext protected by file permissions, not an OS keychain. Environment keys take precedence.
 
 ```sh
 python3 session-canvas/setup.py configure
-python3 session-canvas/setup.py status
-python3 session-canvas/setup.py configure --daily-calls 2500
-python3 session-canvas/setup.py configure --typesafe off --remove-key
+python3 session-canvas/canvas.py adaptive status
+python3 session-canvas/canvas.py adaptive off
 ```
 
-The daily input allowance scales with the selected request cap unless explicitly set. Changes preserve today's recorded usage. The running service picks up saved settings; changing its inherited environment still requires a restart.
+Defaults are 10,000 requests and 60 MB of encoded input per UTC day, shared across conversations. Both are configurable; whichever limit is reached first stops inference. Requests are bounded to 12 KB. These are usage caps, not a dollar guarantee. The board continues to work when Jev is disabled or unavailable. Its toolbar toggle pauses Jev for that board; it cannot bypass global consent.
 
-For scripted installation, make every first-run choice explicit:
-
-```sh
-python3 session-canvas/setup.py --non-interactive --client codex --client cursor --auto-open on --typesafe off
-```
-
-To supply a TypeSafe key in automation, use `--api-key-stdin` with a secret manager or private pipe. Never place a key in command arguments. See the [configuration guide](session-canvas/README.md#guided-setup-and-configuration) for details.
-
-The existing low-level installer remains available for preview, installation, checks, and removal. Pass a client explicitly; its legacy default is all three:
-
-```sh
-python3 session-canvas/install_clients.py dry-run --client codex
-python3 session-canvas/install_clients.py install --client codex
-python3 session-canvas/install_clients.py check --client codex
-```
-
-It merges user hooks, backs up changed settings, preserves unrelated hooks and existing skills, and refuses conflicts. Cloning alone changes no client configuration.
-
-Resume, clear, compact, and fork events do not trigger automatic opening. Background/subagent/noninteractive sessions are skipped when the payload identifies them; hosts do not always expose those indicators. Per-session claims suppress repeated openings, and explicit `stop` remains stopped. Opening failures are retryable; after an interrupted attempt, a claim expires after five minutes. A crash between opening a UI and acknowledgement can cause a later retry to open it again.
-
-Codex requires host approval for an untrusted installed hook. Open `/hooks`, review and trust the Live Canvas SessionStart command, then begin a new chat and send its first message. Installer `check` verifies files, not host trust or actual execution; its Codex readiness is `requires_host_verification`. The installer never changes hook trust.
-
-Keep this checkout in place because the installed hooks and skill reference it. To move an installation, uninstall from the original checkout first. You can still ask **“open live canvas”** or invoke `/live-canvas` for manual use.
-
-Turn automatic opening off or on for all clients using this state directory:
-
-```sh
-python3 session-canvas/canvas.py auto-open off
-python3 session-canvas/canvas.py auto-open on
-```
-
-For skill-only Codex use without automatic opening, create a link from the repository root. This refuses to replace an existing path:
-
-```sh
-skill_path="${CODEX_HOME:-$HOME/.codex}/skills/live-canvas"
-if [ -e "$skill_path" ] || [ -L "$skill_path" ]; then
-  printf 'Already exists; inspect before changing: %s\n' "$skill_path"
-else
-  mkdir -p "$(dirname "$skill_path")"
-  ln -s "$PWD/live-canvas" "$skill_path"
-fi
-```
-
-Open a new Codex task and ask to use the `live-canvas` skill. Automatic transcript discovery requires a local session and `CODEX_THREAD_ID`; the skill documents explicit updates when a transcript is unavailable.
-
-Try a fictional example without installing any hooks:
-
-```sh
-python3 session-canvas/canvas.py start --thread example-preview
-python3 session-canvas/canvas.py update --thread example-preview --file session-canvas/examples/study.json
-```
-
-Open the returned URL. Use `stop --thread example-preview` to disable that example or `shutdown` to stop the shared server.
-
-## How it stays useful
-
-Authored sections support text, lists, checklists, tables, recall cards, and timelines, plus optional isolated HTML/SVG visuals. Check off personal review items, practice with Again / Got it, or shortlist candidate ideas and copy your choices. These interactions persist in your browser, synchronize between views of the same task, reset when their content changes, and never imply assistant-verified results. Existing browser choices migrate automatically; a shared reset clears them across views. A compact header separates connection status from authored freshness; bounded activity and readable version history stay collapsed until needed. Stable section IDs let the assistant update only what changed. A new context clears stale authored content and retains revision history.
-
-Automatic observations never infer a plan, completion, scores, or semantic adaptation. Claude Code and Cursor deliver response text at message boundaries, not token by token. The assistant must still update useful sections at milestones and before its final reply. A bounded `status --summary` digest keeps that work inexpensive.
-
-State stays on disk in `session-canvas/.state` by default. The viewer opens at a readable address such as `http://canvas.localhost:60839/quiz-review`. Its initial private link contains a task credential in the fragment; the page immediately removes it and exchanges it for an HttpOnly cookie. Keep the initial link private; the clean address alone does not authorize another browser. Canvas content remains read-only over HTTP. This is not a security boundary against other processes running as the same OS user. Adapters exclude prompts, tool arguments/results, and reasoning. Codex transcript registration can import earlier visible assistant responses from that same session. Review canvas content before sharing it.
-
-See the [runtime guide and schema](session-canvas/README.md), [skill instructions](live-canvas/SKILL.md), and [design notes](session-canvas/DESIGN.md).
-
-## Uninstall and development
-
-Remove the installed client integrations with:
-
-```sh
-python3 session-canvas/install_clients.py uninstall
-```
-
-It removes unchanged owned hooks and skill links while preserving unrelated edits, backups, and canvas state. Remove a Codex skill link only after confirming it points to this checkout.
-
-Run the offline tests from the repository root:
+## Development and removal
 
 ```sh
 python3 -m unittest discover -s session-canvas -v
 node --test session-canvas/test_viewer.mjs
+npm ci --prefix board
+npm run build --prefix board
+python3 session-canvas/install_clients.py uninstall
 ```
 
-CI runs the Python suite on 3.10 and 3.12, plus dependency-free Node tests for viewer helpers. Node is needed only for those development tests, not to run the canvas. Host hook loading and browser behavior also need verification in the installed client; unit tests do not establish that a host has loaded the integration.
+The build refreshes bundled assets in `session-canvas/board-assets`. Tests cover persistence, conflict handling, protected human edits, authenticated routes, cost limits, and installer preservation. Real browser and host checks remain necessary.
 
-Inspired by [sebi75/herdr-canvas](https://github.com/sebi75/herdr-canvas). Live Canvas does not require Herdr. Licensed under [MIT](LICENSE).
-
-Readable routes stay fixed after their first opening, even when the title changes. Duplicate names receive a short task suffix. Chromium-based host panels support `canvas.localhost`; the external-browser startup helper defaults to `localhost`. If your browser cannot resolve the branded name, set `LIVE_CANVAS_HOST=localhost` (or `127.0.0.1`) when running the command that returns the URL. No hosts-file edits are needed. Cookies and browser-only choices belong to each origin: old capability links still open and clean themselves on their original origin, preserving choices there; switching hostname or port does not migrate those choices. After upgrading a running installation, run `shutdown` and then `start` to load the new server code.
-
-## Optional TypeSafe focus
-
-TypeSafe can choose which existing section to put first and collapse the others. It never generates content or changes authored history. This feature sends bounded authored task context and section excerpts to TypeSafe, so it is off until explicitly enabled:
-
-```sh
-# Configure the key and consent through the terminal wizard.
-python3 session-canvas/setup.py configure
-python3 session-canvas/canvas.py adaptive status
-# Disable remote selection and return to the authored layout:
-python3 session-canvas/canvas.py adaptive off
-```
-
-The preference survives restarts. Guided setup can save a private local key; an environment key takes precedence and requires a server restart when changed. Keys never enter canvas content or browser responses. Defaults are 10,000 calls and 60,000,000 encoded input bytes per UTC day, shared across tasks. No calls happen on browser refresh or automatic activity. Missing keys, failures, uncertain results, and exhausted budgets retain the authored layout. `adaptive retry` requests a bounded retry after a transient failure; it cannot reset the budget. In Settings, **Follow suggested focus** controls this browser's layout only, while `adaptive off` controls remote inference. See [configuration and limitations](session-canvas/README.md#optional-typesafe-presentation).
+See the [agent skill](live-canvas/SKILL.md), [runtime schema](session-canvas/README.md), and [design notes](session-canvas/DESIGN.md). Inspired by [herdr-canvas](https://github.com/sebi75/herdr-canvas); Herdr is not required. Live Canvas is [MIT licensed](LICENSE); bundled editor dependencies retain their own notices.

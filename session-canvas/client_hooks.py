@@ -12,6 +12,7 @@ import canvas
 import auto_open
 
 EVENTS = {
+    "opencode": {},
     "codex": {"SessionStart": "SessionStart"},
     "claude": {"SessionStart": "SessionStart", "UserPromptSubmit": "UserPromptSubmit",
                "PostToolUse": "PostToolUse", "Stop": "Stop"},
@@ -41,6 +42,8 @@ def handle(root, client, event, payload):
     signal = EVENTS[client][event]
     if signal == "SessionStart":
         launcher = Path(__file__).resolve().parents[1] / "live-canvas/scripts/live_canvas.py"
+        if not launcher.exists():
+            launcher = Path(__file__).resolve().parents[1] / "skills/live-canvas/scripts/live_canvas.py"
         prefix = shlex.join([sys.executable, str(launcher), "--home", str(root),
                              "--client", client, "--session-id", session])
         opening = ""
@@ -51,7 +54,8 @@ def handle(root, client, event, payload):
                     opening = "A local worker is automatically opening this session's canvas in the OS browser. "
             else:
                 opening = auto_open.native_instruction(root, thread, prefix, client)
-        context = ("Live canvas is available via /live-canvas. Exact session command prefix: " + prefix +
+        context = ("Use one persistent canvas per chat. Reuse its existing browser tab; never open a duplicate if that URL is already open. Avoid turn-completion Markdown artifacts and alternate canvases (including Cursor canvas) unless the user explicitly asks. Visible final replies are captured automatically; author useful sections only when needed. "
+                   "Live canvas is available via /live-canvas. Exact session command prefix: " + prefix +
                    ". " + opening + "Respect explicit stop and auto-open off; do not automatically reopen otherwise. "
                    "Enabled/updated state is not proof of a visible browser. An explicit request to use/show the canvas requires opening it, even if already active: "
                    "run start, auto-open claim --manual, open the returned start URL when should_open is true, and acknowledge only completed dispatch with auto-open opened --claim <claim>. "
@@ -75,6 +79,10 @@ def handle(root, client, event, payload):
         digest = hashlib.sha256((str(turn) + "\0" + text).encode()).hexdigest()
         canvas.ingest(root, thread, {"kind": "final", "text": text,
                      "event_id": client + ":" + digest, "source": client + " " + event})
+    if signal == 'UserPromptSubmit':
+        prompt = payload.get('prompt')
+        if isinstance(prompt, str) and prompt.strip():
+            canvas.ingest(root, thread, {'kind':'user','text':prompt,'source':client+' user prompt'})
     if signal != "response":
         canvas.hook(root, thread, {}, signal)
     return {}

@@ -142,12 +142,12 @@ class ConfigurationTests(unittest.TestCase):
         def warning(*args):
             import warnings
             warnings.warn("Cannot control echo", setup.getpass.GetPassWarning)
-        with patch("builtins.input", side_effect=["cursor", "yes", "yes", "change"]), \
+        with patch("builtins.input", side_effect=["cursor", "yes", "yes", "yes", "change"]), \
              patch.object(setup.getpass, "getpass", side_effect=warning):
             with self.assertRaises(setup.getpass.GetPassWarning):
                 setup.wizard(self.root, True)
         self.assertFalse(configuration.location(self.root).exists())
-        with patch("builtins.input", side_effect=["cursor", "no", "no", "keep", "", "", "no"]):
+        with patch("builtins.input", side_effect=["cursor", "no", "no", "no", "keep", "", "", "no"]):
             with self.assertRaisesRegex(ValueError, "Cancelled"):
                 setup.wizard(self.root, True)
         self.assertFalse(configuration.location(self.root).exists())

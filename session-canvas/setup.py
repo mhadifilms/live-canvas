@@ -12,14 +12,15 @@ import canvas
 import configuration
 import install_clients
 
-DEFAULT_ROOT = canvas.HERE / ".state"
-CLIENTS = ("codex", "claude", "cursor")
+DEFAULT_ROOT = canvas.home()
+CLIENTS = ("codex", "claude", "cursor", "opencode")
 
 
 def add_options(parser):
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--typesafe", choices=("on", "off"))
     parser.add_argument("--auto-open", choices=("on", "off"))
+    parser.add_argument("--context", choices=("on", "off"), help="Share bounded visible chat excerpts, feedback and viewport with Jev")
     parser.add_argument("--daily-calls", type=int)
     parser.add_argument("--daily-bytes", type=int)
     secret = parser.add_mutually_exclusive_group()
@@ -54,10 +55,10 @@ def wizard(root, installing):
     clients = saved.get("clients", [])
     print("Live Canvas setup — changes are saved only after review. Ctrl-C cancels.")
     print("Hooks run local Live Canvas commands when your coding assistant starts or updates a session.")
-    print("Supported: Codex, Claude Code, Cursor. Ordinary Claude web/desktop chat is not a hook host.")
+    print("Supported: Codex, Claude Code, Cursor, OpenCode. Ordinary Claude web/desktop chat is not a hook host.")
     if installing:
         while True:
-            answer = input("Clients (comma-separated: codex, claude, cursor)" +
+            answer = input("Clients (comma-separated: codex, claude, cursor, opencode)" +
                            (" [" + ",".join(clients) + "]" if clients else "") + ": ").strip()
             selected = list(dict.fromkeys(part.strip().lower() for part in answer.split(","))) if answer else clients
             if selected and all(client in CLIENTS for client in selected):
@@ -67,10 +68,11 @@ def wizard(root, installing):
     changes = {"auto_open": choose("Automatically open a canvas for new sessions?", ("yes", "no"),
                                   "yes" if current["auto_open"] else "no") == "yes"}
     print("Optional TypeSafe: sends bounded excerpts of authored canvas sections to api.typesafe.ai to choose section focus.")
-    print("No transcript is submitted. Provider charges may apply; local caps count decisions and UTF-8 request bytes per UTC day.")
+    print("Only bounded excerpts are sent; enhanced chat and annotation context is a separate opt-in. Provider charges may apply; local caps count decisions and UTF-8 request bytes per UTC day.")
     print("Create an account and API key at https://console.typesafe.ai/settings/keys — a key is optional; the canvas works without it.")
     changes["typesafe"] = choose("Allow TypeSafe to receive these excerpts?", ("yes", "no"),
                                 "yes" if current["enabled"] else "no") == "yes"
+    changes['rich_context'] = choose('Let Jev also use recent visible chat excerpts, canvas notes, plain-text attachment excerpts, and panel size?', ('yes','no'), 'yes' if current['rich_context'] else 'no') == 'yes'
     if current["key_source"] == "environment":
         print("TYPESAFE_API_KEY currently overrides any saved key. It will not be copied into the saved configuration.")
     action = choose("Saved API key: keep, change, or remove?", ("keep", "change", "remove"),
@@ -90,18 +92,23 @@ def wizard(root, installing):
     print("Saved keys are plaintext in " + str(configuration.location(root)) + " (directory 0700; file 0600).")
     print("Existing daily usage is preserved. Environment overrides remain effective until removed from the server environment.")
     print(json.dumps({"clients": clients if installing else saved.get("clients", []), "auto_open": changes["auto_open"], "typesafe": changes["typesafe"], "daily_calls": changes["daily_calls"], "daily_bytes": changes["daily_bytes"], "saved_key_action": action}, indent=2))
-    if choose("Save" + (" and install hooks for " + ", ".join(clients) if installing else "") + "?", ("yes", "no"), "no") != "yes":
+    if choose("Save" + (" and install integration for " + ", ".join(clients) if installing else "") + "?", ("yes", "no"), "no") != "yes":
         raise ValueError("Cancelled; nothing saved or installed")
     return changes, action == "remove", clients
+
+
+def client_plan(user_home, client):
+    return __import__("codex_startup").plan(user_home) if client == "codex" else install_clients.plan(user_home, client)
 
 
 def readiness(user_home, clients):
     results = []
     for client in clients:
-        item = install_clients.plan(user_home, client)
+        item = client_plan(user_home, client)
         next_step = {
-            "codex": "Run codex features enable hooks. In Codex /hooks, review and trust the exact Live Canvas SessionStart command. Restart/open a new chat and send its first message; opening cannot occur in a blank chat before that turn.",
+            "codex": "Start or resume a Codex Desktop task. The managed startup instruction uses the same canvas on the first user turn. No CLI hook trust step is required.",
             "claude": "Restart Claude Code, review the installed hooks in /hooks, then start a new session and send a message. Automatic opening uses your OS browser.",
+            "opencode": "Restart OpenCode. The installed global plugin opens one OS browser canvas per foreground session and mirrors visible messages. Its system hook points the agent at that same canvas.",
             "cursor": "Restart Cursor and review Hooks in Cursor Settings. Start a new Agent session and send a message; the built-in browser is used when its tools are available, otherwise the OS browser."}[client]
         results.append({"client": client, "installed": item["installed"],
                         "config": str(item["config_path"]), "skill": str(item["skill_path"]),
@@ -119,10 +126,10 @@ def execute(args, root):
         return 0
     installing = action == "setup"
     if installing and root.resolve() != DEFAULT_ROOT.resolve():
-        raise ValueError("Setup hooks use the bundle's default .state directory. Use configure/status --home for custom runtimes; do not install hooks with a different state root.")
+        raise ValueError("Setup hooks use the shared Live Canvas data directory. Use configure/status --home for custom runtimes; do not install hooks with a different state root.")
     clients = list(dict.fromkeys(getattr(args, "client", None) or []))
     has_flags = any((args.non_interactive, clients, args.typesafe is not None, args.auto_open is not None,
-                     args.daily_calls is not None, args.daily_bytes is not None, args.api_key_stdin, args.remove_key))
+                     args.daily_calls is not None, args.daily_bytes is not None, args.api_key_stdin, args.remove_key, getattr(args, "context", None) is not None))
     before = configuration.load(root)
     if not has_flags:
         if not sys.stdin.isatty() or not sys.stderr.isatty():
@@ -134,6 +141,7 @@ def execute(args, root):
         if not installing and clients:
             raise ValueError("--client is for setup; configure does not install hooks")
         changes = {}
+        if getattr(args, "context", None) is not None: changes["rich_context"] = args.context == "on"
         for field in ("typesafe", "auto_open"):
             if getattr(args, field) is not None:
                 changes[field] = getattr(args, field) == "on"
@@ -154,21 +162,24 @@ def execute(args, root):
         changes["clients"] = list(dict.fromkeys(before.get("clients", []) + clients))
     # Validate both local configuration and every host before any mutation.
     configuration.prepare(root, changes, remove_key)
-    plans = [install_clients.plan(user_home, client) for client in sorted(clients)] if installing else []
+    plans = [client_plan(user_home, client) for client in sorted(clients)] if installing else []
     with contextlib.ExitStack() as stack:
         stack.enter_context(canvas.locked(root / ".configuration.lock"))
         if configuration.load(root) != before:
             raise ValueError("Configuration changed during setup; rerun to review it")
         for item in plans:
             stack.enter_context(canvas.locked(item["base"] / ".live-canvas-install.lock"))
-        if any(install_clients.plan(user_home, item["client"]) != item for item in plans):
+        if any(client_plan(user_home, item["client"]) != item for item in plans):
             raise ValueError("Host configuration changed during setup; rerun to review it")
         for item in plans:
-            install_clients.apply(item)
+            if item.get("startup_instruction"):
+                __import__("codex_startup").apply(item)
+            else:
+                install_clients.apply(item)
         configuration.save(root, configuration.prepare(root, changes, remove_key))
     result = configuration.status(root)
     result["hosts"] = readiness(user_home, result["clients"])
-    result["next_step"] = "Host loading and hook trust still require the checks listed above." if installing else "The running canvas reloads configuration automatically; daily usage was preserved."
+    result["next_step"] = "Start a new session in your selected app; review the host-specific next steps above." if installing else "The running canvas reloads configuration automatically; daily usage was preserved."
     print(json.dumps(result, indent=2))
     return 0
 

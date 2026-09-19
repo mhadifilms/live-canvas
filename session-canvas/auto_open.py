@@ -83,6 +83,9 @@ def claim(root, thread, manual=False):
     if not manual and not enabled(root):
         result["reason"] = "auto_open_off"
         return result
+    views = canvas.read_json(canvas.task_dir(root, thread) / 'views.json', {})
+    if any(isinstance(stamp, (int, float)) and time.time() - stamp < 45 for stamp in views.values()):
+        return {"should_open": False, "reason": "existing_view", "reuse_existing_tab": True}
     if not manual:
         # Recovery also works when SessionStart did not initialize this session.
         # prepare preserves explicit stop and the global automatic-opening opt-out.
