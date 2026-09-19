@@ -26,9 +26,35 @@ class StartupTests(TestCase):
         opencode_install.apply(opencode_install.plan(self.home));self.assertTrue(opencode_install.plan(self.home)['installed'])
         opencode_install.apply(opencode_install.plan(self.home,True));self.assertEqual(other.read_text(),'export default {};')
     def test_opencode_modified_plugin_is_never_overwritten(self):
-        opencode_install.apply(opencode_install.plan(self.home));path=self.home/'.config/opencode/plugins/live-canvas.mjs';path.write_text('User edit')
+        opencode_install.apply(opencode_install.plan(self.home));path=self.home/'.config/opencode/plugins/live-canvas.js';path.write_text('User edit')
         with self.assertRaises(ValueError):opencode_install.plan(self.home)
         self.assertEqual(path.read_text(),'User edit')
+    def legacy_install(self):
+        opencode_install.apply(opencode_install.plan(self.home))
+        base=self.home/'.config/opencode'
+        (base/'plugins/live-canvas.js').rename(base/'plugins/live-canvas.mjs')
+        manifest=base/'.live-canvas-install.json';data=json.loads(manifest.read_text());data.pop('filename');manifest.write_text(json.dumps(data))
+        return base
+    def test_opencode_migrates_owned_legacy_plugin_to_discoverable_extension(self):
+        base=self.legacy_install()
+        self.assertFalse(opencode_install.plan(self.home)['installed'])
+        self.assertTrue(opencode_install.apply(opencode_install.plan(self.home))['changed'])
+        self.assertFalse((base/'plugins/live-canvas.mjs').exists())
+        self.assertTrue((base/'plugins/live-canvas.js').exists())
+        self.assertTrue(opencode_install.plan(self.home)['installed'])
+    def test_opencode_legacy_upgrade_preserves_collision(self):
+        base=self.legacy_install();path=base/'plugins/live-canvas.js';path.write_text('Other plugin')
+        with self.assertRaises(ValueError):opencode_install.plan(self.home)
+        self.assertEqual(path.read_text(),'Other plugin')
+        self.assertTrue((base/'plugins/live-canvas.mjs').exists())
+    def test_opencode_legacy_edit_is_preserved(self):
+        base=self.legacy_install();path=base/'plugins/live-canvas.mjs';path.write_text('User edit')
+        with self.assertRaises(ValueError):opencode_install.plan(self.home)
+        self.assertEqual(path.read_text(),'User edit')
+    def test_opencode_legacy_uninstall_removes_only_owned_plugin(self):
+        base=self.legacy_install()
+        opencode_install.apply(opencode_install.plan(self.home,True))
+        self.assertFalse((base/'plugins/live-canvas.mjs').exists())
     def test_opencode_skips_subagents_and_preserves_session_identity(self):
         with mock.patch('auto_open.prepare') as prepare:
             opencode_bridge.handle({'event':'start','session_id':'session-a','parent_id':'parent'},self.home);prepare.assert_not_called()

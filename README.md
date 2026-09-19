@@ -25,7 +25,7 @@ Choose your apps, automatic opening, and optional Jev assistance. No account or 
 
 Codex setup backs up its global instructions and removes only unchanged Live Canvas-owned legacy hooks. It does not alter hook trust records or require a CLI trust command. Opening still depends on the agent following the startup instruction: Codex does not expose a supported way for this package to open its panel before the first turn starts. Ordinary Claude web chat and Windows are not supported.
 
-Host integrations use one board per exact conversation identity and check for an existing view before opening. `stop` and `auto-open off` remain respected. Host-specific hooks/plugins may require restarting the app and reviewing its normal integration permissions. OpenCode is covered by adapter tests; a live OpenCode host must still confirm plugin loading.
+Host integrations use one board per exact conversation identity and check for an existing view before opening. `stop` and `auto-open off` remain respected. Host-specific hooks/plugins may require restarting the app and reviewing its normal integration permissions. OpenCode 1.18.31 has been verified with a real local host: session creation opens a visible OS-browser board, visible replies sync at idle, subsequent turns reuse it, and child sessions are skipped. Its auto-discovery requires a `.js` plugin; rerunning setup migrates an unchanged Live Canvas-owned legacy `.mjs` installation safely.
 
 ## Work together
 
