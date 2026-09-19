@@ -56,11 +56,12 @@ export function prepareScene(scene,measure) {
   for (const e of elements) if(!e.isDeleted&&e.customData?.projection&&!protectedSections.has(e.customData.sectionId)) {
     const key=e.groupIds[0];if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);
   }
-  const cards=[...groups.values()].map(g=>g.find(e=>e.type==='rectangle')).filter(Boolean);
+  const orderedGroups=[...groups.values()].sort((a,b)=>(a[0].customData?.renderOrder||0)-(b[0].customData?.renderOrder||0));
+  const cards=orderedGroups.map(g=>g.find(e=>e.type==='rectangle')).filter(Boolean);
   const columns=[...new Set(cards.map(e=>e.x))].sort((a,b)=>a-b);
   const bottoms=new Map(columns.map(x=>[x,24]));
   const fixed=elements.filter(e=>!e.isDeleted&&(!e.customData?.projection||protectedSections.has(e.customData.sectionId)));
-  for (const objects of groups.values()) {
+  for (const objects of orderedGroups) {
     const card=objects.find(e=>e.type==='rectangle'),head=objects.find(e=>e.type==='text'&&e.customData.heading),body=objects.find(e=>e.type==='text'&&!e.customData.heading);
     if (!card||!head||!body) continue;
     const oldX=card.x;

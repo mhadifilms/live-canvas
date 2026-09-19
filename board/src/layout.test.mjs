@@ -41,3 +41,13 @@ test('mobile bottom toolbar is not mistaken for a top obstruction',()=>{
  const editor={getBoundingClientRect:()=>({top:48,bottom:720,left:0,right:480,width:480,height:672}),querySelectorAll:()=>[toolbar(64,108),toolbar(658,706)]};
  const rect=safeViewport(editor);assert.equal(rect.y,84);assert.ok(rect.height>450);assert.ok(rect.y+rect.height<=610);
 });
+test('old element insertion order cannot interleave workflow and supporting groups',()=>{
+ const unit=(id,order,x)=>[
+  {id:id+'box',type:'rectangle',x,y:20,width:250,height:120,groupIds:[id],customData:{projection:3,sectionId:id,renderOrder:order,sequence:true}},
+  {...text(id+'head',x+16,34,218,30),text:'Title',originalText:'Title',lineHeight:1.3,groupIds:[id],customData:{projection:3,sectionId:id,renderOrder:order,heading:true}},
+  {...text(id+'body',x+16,70,218,40),text:'Words',originalText:'Words',lineHeight:1.3,groupIds:[id],customData:{projection:3,sectionId:id,renderOrder:order}}
+ ];
+ const scene={elements:[...unit('support',1000,24),...unit('first',0,24),...unit('second',1,298)]};
+ const result=prepareScene(scene,s=>s.length*10);
+ assert.ok(result.elements.find(e=>e.id==='supportbox').y>result.elements.find(e=>e.id==='firstbox').y);
+});

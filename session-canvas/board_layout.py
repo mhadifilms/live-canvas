@@ -3,7 +3,7 @@ import hashlib
 import json
 import secrets
 
-VERSION = 2
+VERSION = 3
 
 
 def project(state, presentation=None):
@@ -37,9 +37,9 @@ def project(state, presentation=None):
     color={'blue':'#426a82','sage':'#527565'}.get(style.get('emphasis'),'#343a40')
     def emit(e,sec,text,unit,heading=False):
         e['groupIds']=['unit-'+sec['id']+'-'+str(unit)]
-        e['customData']={'origin':'agent','sectionId':sec['id'],'generatedText':text,'heading':heading,'projection':VERSION}
+        e['customData']={'origin':'agent','sectionId':sec['id'],'generatedText':text,'heading':heading,'projection':VERSION,'renderOrder':section_index*1000+unit}
         wanted[e['id']]=e
-    for sec in ordered:
+    for section_index,sec in enumerate(ordered):
         units=[];is_sequence=any(b.get('type')=='timeline' for b in sec['blocks']) or p.get('representations',{}).get(sec['id'])=='sequence'
         for block in sec['blocks']:
             capacity=max(60,min(300,int(text_width/(20*.68))*max(2,int((height-110)/26))))
