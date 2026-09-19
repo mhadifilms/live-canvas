@@ -20,6 +20,8 @@ export function copyNotices(out) {
       const manifest = join(path, "package.json");
       if (!existsSync(manifest)) continue;
       const p = JSON.parse(readFileSync(manifest, "utf8"));
+      // macOS-only development watcher; it is not part of the browser bundle.
+      if (p.name === "fsevents") continue;
       const target = join(dest, p.name.replaceAll("/", "__") + "-" + p.version);
       for (const file of readdirSync(path)) {
         if (
