@@ -81,12 +81,12 @@ def text_element(eid,text,x,y,heading=False,width=320):
     import textwrap
     size=24 if heading else 20
     lines=[]
-    # Conservative server fallback. The editor measures with the loaded hand font.
+    # Conservative server fallback. The editor measures with the loaded font.
     for line in text.split('\n'):
         lines.extend(textwrap.wrap(line,width=max(8,int(width/(size*.68))),replace_whitespace=False) or [''])
     wrapped='\n'.join(lines)
     e=base_element(eid,'text',x,y,width,max(size*1.3,len(lines)*size*1.3))
-    e.update(text=wrapped,originalText=text,fontSize=size,fontFamily=1,textAlign='left',verticalAlign='top',containerId=None,autoResize=False,lineHeight=1.3)
+    e.update(text=wrapped,originalText=text,fontSize=size,fontFamily=2,textAlign='left',verticalAlign='top',containerId=None,autoResize=False,lineHeight=1.3)
     return e
 
 

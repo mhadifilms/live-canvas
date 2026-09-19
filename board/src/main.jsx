@@ -18,11 +18,11 @@ const route =
 const auth = new URLSearchParams(location.hash.slice(1)).get("auth");
 history.replaceState(null, "", route);
 const viewId = crypto.randomUUID();
-const fontReady = new FontFace("Virgil", "url(/board-assets/fonts/Virgil/Virgil-Regular.woff2)").load().then(font => document.fonts.add(font)).catch(() => null);
+const fontReady = document.fonts.ready;
 const measureContext = document.createElement("canvas").getContext("2d");
 function measuredScene(scene) {
   return prepareScene(scene, (text, e) => {
-    measureContext.font = `${e.fontSize}px Virgil`;
+    measureContext.font = `${e.fontSize}px Helvetica, Arial, sans-serif`;
     return measureContext.measureText(text).width;
   });
 }
@@ -357,7 +357,7 @@ function App() {
             y: e.clientY / zoom - a.scrollY,
             text: "↗ " + file.name,
             fontSize: 18,
-            fontFamily: 1,
+            fontFamily: 2,
             link: location.origin + route + "/attachment/" + entry.file_id,
           },
         ]);
@@ -431,7 +431,7 @@ function App() {
             appState: {
               theme,
               viewBackgroundColor: "#fbfaf8",
-              currentItemFontFamily: 1,
+              currentItemFontFamily: 2,
               currentItemRoughness: 1,
               currentItemStrokeColor: "#343a40",
             },

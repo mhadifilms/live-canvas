@@ -61,12 +61,17 @@ export function prepareScene(scene,measure) {
   const columns=[...new Set(cards.map(e=>e.x))].sort((a,b)=>a-b);
   const bottoms=new Map(columns.map(x=>[x,24]));
   const fixed=elements.filter(e=>!e.isDeleted&&(!e.customData?.projection||protectedSections.has(e.customData.sectionId)));
+  let sequenceRowY=24;
   for (const objects of orderedGroups) {
     const card=objects.find(e=>e.type==='rectangle'),head=objects.find(e=>e.type==='text'&&e.customData.heading),body=objects.find(e=>e.type==='text'&&!e.customData.heading);
     if (!card||!head||!body) continue;
     const oldX=card.x;
     const x=card.customData.wide?columns[0]:card.customData.sequence?oldX:columns.reduce((a,b)=>bottoms.get(a)<=bottoms.get(b)?a:b);
     let y=card.customData.wide?Math.max(...bottoms.values()):bottoms.get(x)||24;
+    if(card.customData.sequence) {
+      if(x===columns[0])sequenceRowY=Math.max(...bottoms.values());
+      y=sequenceRowY;
+    }
     const height=head.height+body.height+40;
     for(let tries=0;tries<=fixed.length;tries++) {
       const hits=fixed.filter(e=>x<e.x+Math.abs(e.width)+16&&x+card.width>e.x-16&&y<e.y+Math.abs(e.height)+16&&y+height>e.y-16);

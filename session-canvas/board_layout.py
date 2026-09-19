@@ -3,7 +3,7 @@ import hashlib
 import json
 import secrets
 
-VERSION = 3
+VERSION = 5
 
 
 def project(state, presentation=None):
@@ -26,7 +26,7 @@ def project(state, presentation=None):
     # Moving another member of a human-edited group would still disturb their work.
     protected={e.get('customData',{}).get('sectionId') for e in old.values() if e.get('customData',{}).get('humanTouched')}
     occupied=[(e['x'],e['y'],abs(e['width']),abs(e['height'])) for e in old.values() if not e.get('isDeleted') and
-              (not e.get('customData',{}).get('generatedText') or e.get('customData',{}).get('sectionId') in protected)]
+              ('generatedText' not in e.get('customData',{}) or e.get('customData',{}).get('sectionId') in protected)]
     priority=p.get('priorities',{});focus=p.get('focus_id');style=p.get('style',{})
     ordered=sorted(sections,key=lambda sec:(sec['id']!=focus,{'high':0,'normal':1,'low':2}.get(priority.get(sec['id']),1)))
     columns=max(1,min(4,int((width+24)/304)))
@@ -40,17 +40,23 @@ def project(state, presentation=None):
         e['customData']={'origin':'agent','sectionId':sec['id'],'generatedText':text,'heading':heading,'projection':VERSION,'renderOrder':section_index*1000+unit}
         wanted[e['id']]=e
     for section_index,sec in enumerate(ordered):
-        units=[];is_sequence=any(b.get('type')=='timeline' for b in sec['blocks']) or p.get('representations',{}).get(sec['id'])=='sequence'
+        units=[];node_titles={};is_sequence=any(b.get('type')=='timeline' for b in sec['blocks']) or p.get('representations',{}).get(sec['id'])=='sequence'
         for block in sec['blocks']:
             capacity=max(60,min(300,int(text_width/(20*.68))*max(2,int((height-110)/26))))
-            units.extend(board.chunks(board.block_text(block),capacity))
+            if block.get('type')=='timeline':
+                for item in block.get('items',[]):
+                    title=' · '.join(board.plain(item.get(k)) for k in ('at','label') if item.get(k))
+                    for piece in board.chunks(board.plain(item.get('detail')),capacity) or ['']:
+                        node_titles[len(units)]=title;units.append(piece)
+            else:units.extend(board.chunks(board.block_text(block),capacity))
         if not units:units=['']
         # Bound native object count without dropping source material. Very large
         # sections use taller nodes, which readable camera views can navigate.
         max_units=max(1,min(80,(board.MAX_ELEMENTS-len(occupied))//max(4,len(sections)*4)))
         if len(units)>max_units:
             stride=(len(units)+max_units-1)//max_units
-            units=['\n'.join(units[i:i+stride]) for i in range(0,len(units),stride)]
+            units=['\n'.join((node_titles.get(j,'')+' '+units[j]).strip() for j in range(i,min(i+stride,len(units)))) for i in range(0,len(units),stride)]
+            node_titles={}
         row_y=max(heights);row_height=0
         for n,text in enumerate(units):
             key=lambda name:'agent-'+hashlib.sha256((sec['id']+':'+name).encode()).hexdigest()[:22]
@@ -62,7 +68,7 @@ def project(state, presentation=None):
             wide=not is_sequence and len(text)>180 and columns>1
             unit_width=min(width,900) if wide else card_width
             if wide:x=24;y=max(heights)
-            title=board.plain(sec['title'])+(' · '+str(n+1) if len(units)>1 else '')
+            title=node_titles.get(n) or board.plain(sec['title'])+(' · '+str(n+1) if len(units)>1 else '')
             head=board.text_element(headid,title,x+16,y+14,True,unit_width-32)
             body=board.text_element(bodyid,text,x+16,y+head['height']+24,False,unit_width-32)
             boxheight=head['height']+body['height']+40

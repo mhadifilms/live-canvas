@@ -110,10 +110,10 @@ class BundledEditorTests(unittest.TestCase):
 class LayoutRegressionTests(unittest.TestCase):
     def state(self):
         return {'content':{'sections':[{'id':'flow','title':'A process','blocks':[{'type':'timeline','items':[{'at':str(i),'label':label,'detail':''} for i,label in enumerate(['Collect evidence','Review the result','Publish the result'])]}]}]},'collaboration':{'viewport':{'width':800,'height':520}}}
-    def test_native_sequence_preserves_source_and_uses_hand_font(self):
+    def test_native_sequence_preserves_source_and_uses_readable_font(self):
         s=self.state();board.sync_content(s);elements=s['board']['elements']
         self.assertEqual(len([e for e in elements if e['type']=='arrow']),2)
-        self.assertTrue(all(e['fontFamily']==1 for e in elements if e['type']=='text'))
+        self.assertTrue(all(e['fontFamily']==2 for e in elements if e['type']=='text'))
         self.assertIn('Collect evidence',' '.join(e.get('originalText','') for e in elements))
     def test_layout_is_compact_and_does_not_infer_again_from_its_own_geometry(self):
         s=self.state();board.sync_content(s);before=jev.source_hash(s)

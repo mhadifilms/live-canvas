@@ -47,7 +47,10 @@ test('old element insertion order cannot interleave workflow and supporting grou
   {...text(id+'head',x+16,34,218,30),text:'Title',originalText:'Title',lineHeight:1.3,groupIds:[id],customData:{projection:3,sectionId:id,renderOrder:order,heading:true}},
   {...text(id+'body',x+16,70,218,40),text:'Words',originalText:'Words',lineHeight:1.3,groupIds:[id],customData:{projection:3,sectionId:id,renderOrder:order}}
  ];
- const scene={elements:[...unit('support',1000,24),...unit('first',0,24),...unit('second',1,298)]};
+ const scene={elements:[...unit('support',1000,24),...unit('first',0,24),...unit('second',1,298),...unit('third',2,24)]};
+ scene.elements.find(e=>e.id==='secondbody').originalText='Long step details '.repeat(12);
  const result=prepareScene(scene,s=>s.length*10);
+ const second=result.elements.find(e=>e.id==='secondbox'),third=result.elements.find(e=>e.id==='thirdbox');
+ assert.ok(third.y>=second.y+second.height+24);
  assert.ok(result.elements.find(e=>e.id==='supportbox').y>result.elements.find(e=>e.id==='firstbox').y);
 });

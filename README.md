@@ -29,7 +29,7 @@ Host integrations use one board per exact conversation identity and check for an
 
 ## Readable spatial layouts
 
-Fit measures the usable editor area, including desktop/mobile toolbars and padding. Automatic fitting keeps text at least 16 CSS pixels on screen. Larger boards have previous/next readable views; manual zoom and pan remain available. New text uses Excalidraw's hand-drawn Virgil font. Generated text wraps using measured font widths, and compact native cards use their actual text heights.
+Fit measures the usable editor area, including desktop/mobile toolbars and padding. Automatic fitting keeps text at least 16 CSS pixels on screen. Larger boards have previous/next readable views; manual zoom and pan remain available. New text uses a clean sans-serif font. Generated text wraps using measured font widths, and compact native cards use their actual text heights.
 
 Jev chooses focus, importance, grouping, and whether source material describes a connected sequence or independent ideas. It receives the available viewport and readability constraints. Pixel measurements and resize fitting run locally; they do not require model calls. Semantic decisions remain debounced, cached and subject to the existing configurable daily budget. Human-edited sections and manually authored objects stay fixed, so automatic packing may leave space around that protected work.
 
