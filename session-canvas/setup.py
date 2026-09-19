@@ -20,7 +20,7 @@ def add_options(parser):
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--typesafe", choices=("on", "off"))
     parser.add_argument("--auto-open", choices=("on", "off"))
-    parser.add_argument("--context", choices=("on", "off"), help="Share bounded visible chat excerpts, feedback and viewport with Jev")
+    parser.add_argument("--context", choices=("on", "off"), help="Share bounded recent visible chat excerpts with Jev")
     parser.add_argument("--daily-calls", type=int)
     parser.add_argument("--daily-bytes", type=int)
     secret = parser.add_mutually_exclusive_group()
@@ -68,11 +68,11 @@ def wizard(root, installing):
     changes = {"auto_open": choose("Automatically open a canvas for new sessions?", ("yes", "no"),
                                   "yes" if current["auto_open"] else "no") == "yes"}
     print("Optional TypeSafe: sends bounded excerpts of authored canvas sections to api.typesafe.ai to choose section focus.")
-    print("Only bounded excerpts are sent; enhanced chat and annotation context is a separate opt-in. Provider charges may apply; local caps count decisions and UTF-8 request bytes per UTC day.")
+    print("Only bounded excerpts are sent; enhanced chat context is a separate opt-in. Provider charges may apply; local caps count decisions and UTF-8 request bytes per UTC day.")
     print("Create an account and API key at https://console.typesafe.ai/settings/keys — a key is optional; the canvas works without it.")
     changes["typesafe"] = choose("Allow TypeSafe to receive these excerpts?", ("yes", "no"),
                                 "yes" if current["enabled"] else "no") == "yes"
-    changes['rich_context'] = choose('Let Jev also use recent visible chat excerpts, canvas notes, plain-text attachment excerpts, and panel size?', ('yes','no'), 'yes' if current['rich_context'] else 'no') == 'yes'
+    changes['rich_context'] = choose('Let Jev also use bounded recent visible user and assistant messages?', ('yes','no'), 'yes' if current['rich_context'] else 'no') == 'yes'
     if current["key_source"] == "environment":
         print("TYPESAFE_API_KEY currently overrides any saved key. It will not be copied into the saved configuration.")
     action = choose("Saved API key: keep, change, or remove?", ("keep", "change", "remove"),

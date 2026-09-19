@@ -388,6 +388,8 @@ class CanvasTests(unittest.TestCase):
             self.assertEqual(shell[0], 200)
             self.assertNotIn(self.thread.encode(), shell[2])
             self.assertEqual(request(route + "/state")[0], 403)
+            self.assertEqual(request(route + "/archive")[0], 403)
+            self.assertEqual(request(route + "/chat.json")[0], 403)
             self.assertEqual(request(route + "/_auth", "POST", {"Authorization": auth["Authorization"]})[0], 403)
             self.assertEqual(request(route + "/_auth", "POST", {**auth, "Origin": "http://evil.localhost"})[0], 403)
             self.assertEqual(request(route + "/_auth", "POST", {**auth, "Sec-Fetch-Site": "cross-site"})[0], 403)
@@ -401,6 +403,10 @@ class CanvasTests(unittest.TestCase):
             self.assertNotIn("Domain=", cookie_header)
             cookie = cookie_header.split(";", 1)[0]
             authenticated = {"Cookie": cookie}
+            self.assertEqual(request(route + "/archive", headers=authenticated)[0], 200)
+            self.assertEqual(request(route + "/chat.json", headers=authenticated)[0], 200)
+            self.assertEqual(request(other_route + "/archive", headers=authenticated)[0], 403)
+            self.assertEqual(request(route + "/board.excalidraw", headers=authenticated)[0], 404)
             state = request(route + "/state", headers=authenticated)
             self.assertEqual(state[0], 200)
             self.assertEqual(json.loads(state[2])["thread"], self.thread)

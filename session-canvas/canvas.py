@@ -45,7 +45,8 @@ def display_text(text):
 
 
 def home():
-    return Path(os.environ.get("SESSION_CANVAS_HOME", str(HERE / ".state"))).expanduser().resolve()
+    import library
+    return Path(os.environ.get("SESSION_CANVAS_HOME", str(library.default_home()))).expanduser().resolve()
 
 
 def key(thread):
@@ -61,6 +62,17 @@ def read_json(path, default=None):
         return json.loads(path.read_text())
     except (FileNotFoundError, ValueError):
         return default
+
+
+def atomic_bytes(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temp = path.with_name(path.name + '.' + secrets.token_hex(8) + '.tmp')
+    try:
+        with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as f:
+            f.write(value)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def atomic_json(path, value):
@@ -125,11 +137,19 @@ def mutate(root, thread, action, enabled_only=False):
         state["schema"] = 2
         if enabled_only and not state["enabled"]:
             return None
+        old_archive = json.dumps([state.get("content"), state.get("presentation")], sort_keys=True)
+        old_feed_ids = {item["id"] for item in state.get("feed", [])}
         if action(state) is False:
             return state
         state["revision"] += 1
         state["updated_at"] = now()
         atomic_json(directory / "state.json", state)
+        import library
+        for item in reversed(state.get('feed', [])):
+            if item['id'] not in old_feed_ids:
+                library.record_message(root, thread, item)
+        if old_archive != json.dumps([state.get('content'), state.get('presentation')], sort_keys=True) or not (directory / 'canvas.html').exists():
+            library.snapshot(root, state)
         return state
 
 
@@ -267,8 +287,8 @@ def update_content(root, thread, patch):
 
 def ingest(root, thread, event):
     kind = event.get("kind", "activity")
-    if kind not in {"commentary", "final", "activity"}:
-        raise ValueError("Feed kind must be commentary, final, or activity")
+    if kind not in {"user", "commentary", "final", "activity"}:
+        raise ValueError("Feed kind must be user, commentary, final, or activity")
     text = event.get("text", "")
     if not isinstance(text, str):
         raise ValueError("Feed text must be a string")
@@ -280,7 +300,7 @@ def ingest(root, thread, event):
                 "source": str(event.get("source", "event input"))[:160], "at": now()}
         state["feed"].insert(0, item)
         state["feed"] = state["feed"][:40]
-        if kind in {"commentary", "final"}:
+        if kind in {"user", "commentary", "final"}:
             state["automatic"]["latest_" + kind] = item
         state["activity"] = {"phase": "idle" if kind == "final" else "observed",
                              "label": "Assistant response received" if kind == "final" else "Activity received", "at": item["at"]}
@@ -318,6 +338,10 @@ def transcript_item(event, offset):
     if not isinstance(payload, dict):
         return None
     stamp = event.get("timestamp") or now()
+    if event.get("type") == "event_msg" and payload.get("type") == "user_message":
+        text = payload.get("message")
+        if isinstance(text, str) and text.strip():
+            return {"id": "user:" + str(offset), "kind": "user", "text": text[:12000], "at": stamp, "source": "Task transcript"}
     if event.get("type") == "response_item" and payload.get("type") == "message" and payload.get("role") == "assistant":
         phase = payload.get("phase") or payload.get("channel")
         if phase not in {"commentary", "final_answer", "final"}:
@@ -542,7 +566,7 @@ def make_handler(root, token, instance):
             return (not require_origin or bool(origins)) and self.headers.get("Sec-Fetch-Site") != "cross-site"
 
         def clean_route(self):
-            match = re.fullmatch(r"/([a-z0-9][a-z0-9-]*)(?:/(state|_auth))?", self.path)
+            match = re.fullmatch(r"/([a-z0-9][a-z0-9-]*)(?:/(state|_auth|archive|chat.json))?", self.path)
             if not match:
                 return None
             task_key = read_json(root / "routes.json", {}).get(match[1])
@@ -567,6 +591,8 @@ def make_handler(root, token, instance):
             return self.send_body(200, body.encode(), "text/html; charset=utf-8", cookie=cookie)
 
         def send_state(self, state):
+            # Keep experimental saved data on disk, outside the document viewer payload.
+            state = {name: value for name, value in state.items() if name not in {"board", "collaboration"}}
             etag = '"%s"' % state["revision"]
             if self.headers.get("If-None-Match") == etag:
                 return self.send_body(304, etag=etag)
@@ -598,12 +624,18 @@ def make_handler(root, token, instance):
             if endpoint is None:
                 # Only the generic shell is public; no authored data or task title.
                 return self.shell(route)
-            if endpoint != "state":
-                return self.send_body(404)
             if not self.authorized(task_key):
                 return self.send_body(403)
             state = read_json(root / "tasks" / task_key / "state.json")
-            return self.send_state(state) if state else self.send_body(404)
+            if not state:
+                return self.send_body(404)
+            if endpoint in {"archive", "chat.json"}:
+                import library
+                library.snapshot(root, state)
+                name = "canvas.html" if endpoint == "archive" else "chat.json"
+                mime = "text/html; charset=utf-8" if endpoint == "archive" else "application/json"
+                return self.send_body(200, (root / "tasks" / task_key / name).read_bytes(), mime)
+            return self.send_state(state) if endpoint == "state" else self.send_body(404)
 
         do_HEAD = do_GET
 
@@ -885,7 +917,9 @@ def main():
                           "server_running": None if health_unavailable else bool(info),
                           "server_status": "health unavailable: local networking blocked" if health_unavailable else "running" if info else "stopped",
                           "url": viewer_url(info, thread, root) if info and state else None,
-                          "state_file": str(task_dir(root, thread) / "state.json")}, indent=2))
+                          "state_file": str(task_dir(root, thread) / "state.json"),
+                          "html_file": str(task_dir(root, thread) / "canvas.html"),
+                          "chat_reference": str(task_dir(root, thread) / "chat.json")}, indent=2))
         return 0
     except Exception as exc:
         if args.command == "hook":

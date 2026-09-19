@@ -12,8 +12,13 @@ class DistributionTests(unittest.TestCase):
             'session-canvas/canvas.py', 'session-canvas/index.html',
             'session-canvas/client_hooks.py', 'session-canvas/install_clients.py',
             'session-canvas/auto_open.py', 'session-canvas/typesafe_presentation.py',
+            'session-canvas/codex_startup.py', 'session-canvas/opencode-plugin.mjs',
+            'session-canvas/opencode_install.py', 'session-canvas/opencode_bridge.py',
+            'session-canvas/library.py',
             'session-canvas/README.md', 'session-canvas/DESIGN.md',
         ]
+        for experimental in ("board", "session-canvas/board-assets", "session-canvas/board.py", "session-canvas/collaboration.py"):
+            self.assertFalse((root / experimental).exists(), experimental)
         for relative in required:
             with self.subTest(path=relative):
                 self.assertTrue((root / relative).is_file())

@@ -30,7 +30,7 @@
   <div class="toolbar"><div class="heading"><h1 id="title">Live Canvas</h1></div><div class="header-actions">
     <button id="copy-work" class="icon-button" aria-label="Copy authored work" title="Copy authored work" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="2"/><path d="M12 6V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v8a1 1 0 0 0 1 1h3"/></svg></button>
     <details class="settings" id="settings"><summary class="icon-button" aria-label="Canvas settings" title="Canvas settings"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></summary><div class="settings-popover">
-      <label><input id="adaptive-layout" type="checkbox" checked> Follow suggested focus</label><p id="adaptive-status" class="local-note">Original authored layout</p><p class="local-note">Browser layout only. Remote inference is controlled by the local server.</p><details><summary>Setup and API key</summary><p>From your Live Canvas checkout, run <code>python3 session-canvas/setup.py</code> to choose clients, set an API key, and change daily limits. Keys stay out of this browser.</p><p>For Codex, review the Live Canvas SessionStart entry in CLI <code>/hooks</code>, then send a message in a new chat.</p></details>
+      <label><input id="adaptive-layout" type="checkbox" checked> Follow suggested focus</label><p id="adaptive-status" class="local-note">Original authored layout</p><p class="local-note">Browser layout only. Remote inference is controlled by the local server.</p><details><summary>Setup and API key</summary><p>From your Live Canvas checkout, run <code>python3 session-canvas/setup.py</code> to choose clients, set an API key, and change daily limits. Keys stay out of this browser.</p><p>For Codex, setup installs a managed startup instruction. Send the first message in a new desktop task; no CLI hook-trust step is needed.</p></details>
       <label for="theme-select">Appearance <select id="theme-select"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <p id="storage-note">Checks, shortlists, and practice are saved in this browser only. They are not sent to the assistant.</p>
       <button id="reset-local" class="quiet">Reset my interactions</button>
@@ -41,7 +41,7 @@
   <div id="context" class="context" hidden><span id="context-label"></span><p id="context-description" class="context-description" hidden></p></div>
 </header>
 <div id="notice" class="notice" role="status" hidden></div>
-<div id="loading" class="empty-state"><p>Opening your canvas…</p></div>
+<div id="loading" class="empty-state"><h2>Your workspace, beside the conversation</h2><p>Useful notes, ideas, and decisions will stay here as you work.</p></div>
 <div id="canvas" hidden>
   <div id="outcome" class="summary-text rich-text" hidden></div>
   <div id="work"></div>
@@ -155,7 +155,7 @@ function richText(target, value) {
   while ((match = pattern.exec(text))) {
     target.append(document.createTextNode(text.slice(position, match.index)));
     let part;
-    if (match[1]) { const href = safeURL(match[2]); if (href) { part = node('a', match[1]); part.href = href; part.target = '_blank'; part.rel = 'noopener noreferrer'; part.referrerPolicy = 'no-referrer'; } else part = document.createTextNode(match[1]); }
+    if (match[1]) { const href = safeURL(match[2]); if (href) { part = node('a', match[1]); part.href = href; part.rel = 'noopener noreferrer'; part.referrerPolicy = 'no-referrer'; } else part = document.createTextNode(match[1]); }
     else part = node(match[3] ? 'strong' : match[4] ? 'code' : 'em', match[3] || match[4] || match[5]);
     target.append(part); position = pattern.lastIndex;
   }
@@ -296,7 +296,7 @@ function renderActivity(data) {
   const signature = JSON.stringify([data.feed, data.activity, data.content.current, boundary]); if (signature === activitySignature) return; activitySignature = signature;
   const feed = (data.feed || []).filter(item => item.text?.trim()), recent = feed.slice(0, 4); $('feed').replaceChildren();
   const signal = data.activity || {}; if (signal.at) $('feed').append(node('p', signal.label + ' · ' + relative(signal.at), 'panel-note'));
-  recent.forEach(item => $('feed').append(entry(item.kind === 'final' ? 'Assistant response' : item.kind === 'commentary' ? 'Assistant update' : 'Observed activity', item.at, item.text)));
+  recent.forEach(item => $('feed').append(entry(item.kind === 'final' ? 'Assistant response' : item.kind === 'commentary' ? 'Assistant update' : item.kind === 'user' ? 'Your message' : 'Observed activity', item.at, item.text)));
   if (!recent.length && data.content.current) $('feed').append(entry('Current work', data.curated_at, data.content.current));
   if (!recent.length && !data.content.current) $('feed').append(node('p', 'No assistant messages yet.', 'panel-note'));
   if (feed.length > recent.length) $('feed').append(node('p', 'Showing the latest ' + recent.length + ' updates. Full conversation stays in your chat.', 'panel-note'));

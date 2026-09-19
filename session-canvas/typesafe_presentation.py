@@ -1,4 +1,4 @@
-"""Optional, bounded TypeSafe judgments over authored canvas sections only."""
+"""Optional, bounded TypeSafe judgments over authored canvas sections with optional bounded visible chat context."""
 import datetime as dt
 import hashlib
 import json
@@ -10,7 +10,7 @@ import sys
 import time
 import urllib.request
 
-POLICY = "section-focus-v1"
+POLICY = "section-focus-v2"
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MAX_INPUT_BYTES = 6000
 MAX_RESPONSE_BYTES = 32768
@@ -25,7 +25,7 @@ def config(environ=None, root=None):
 
 def configuration_identity(settings):
     # Never persist or print this tuple: the credential belongs only in memory.
-    return tuple(settings.get(name) for name in ("enabled", "key", "daily_calls", "daily_bytes", "retry", "revision"))
+    return tuple(settings.get(name) for name in ("enabled", "key", "daily_calls", "daily_bytes", "retry", "revision", "rich_context"))
 
 
 def still_current(root, settings):
@@ -39,18 +39,24 @@ def encoded(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 
 
-def source_hash(state):
+def chat_context(state):
+    return [{"role": "user" if item.get("kind") == "user" else "assistant",
+             "text": excerpt(item.get("text"), 350)}
+            for item in state.get("feed", []) if item.get("kind") in {"user", "final"}][:3]
+
+
+def source_hash(state, rich_context=False):
     content = state.get("content", {})
     # Full relevant content, not just excerpts: unseen edits also invalidate work.
     relevant = {name: content.get(name) for name in ("title", "context", "current", "outcome", "sections")}
-    return hashlib.sha256(encoded([POLICY, state.get("context_started_at"), relevant])).hexdigest()
+    return hashlib.sha256(encoded([POLICY, state.get("context_started_at"), relevant, chat_context(state) if rich_context else None])).hexdigest()
 
 
 def excerpt(value, size):
     return str(value or "").encode()[:size].decode("utf-8", errors="ignore")
 
 
-def build_request(state):
+def build_request(state, rich_context=False):
     content = state.get("content", {})
     sections = content.get("sections", [])
     if len(sections) < 2:
@@ -79,6 +85,8 @@ def build_request(state):
             "Choose unchanged if evidence is weak, several sections are equally useful, or the best section is not among candidates. "
             "Focusing moves that section first and collapses other sections, without editing or removing content.",
             "criteria": criteria}}}
+    if rich_context:
+        request["state"]["visible_chat"] = chat_context(state)
     body = encoded(request)
     if len(body) > MAX_INPUT_BYTES:
         return None  # Fail closed if future policy growth exceeds the fixed budget.
@@ -173,10 +181,10 @@ def cache_result(root, fingerprint, result, day, revision=0):
         canvas.atomic_json(path, ledger)
 
 
-def apply_result(root, snapshot, fingerprint, result, is_enabled=lambda: True):
+def apply_result(root, snapshot, fingerprint, result, is_enabled=lambda: True, rich_context=False):
     import canvas
     def apply(state):
-        if not is_enabled() or not state.get("enabled") or source_hash(state) != fingerprint:
+        if not is_enabled() or not state.get("enabled") or source_hash(state, rich_context) != fingerprint:
             return False
         presentation = {**result, "input_hash": fingerprint, "policy": POLICY}
         presentation.pop("day", None)
@@ -194,12 +202,12 @@ def apply_result(root, snapshot, fingerprint, result, is_enabled=lambda: True):
 def process(root, snapshot, settings, request=evaluate, day=None, is_enabled=lambda: True):
     if not settings["enabled"] or not snapshot.get("enabled") or not is_enabled():
         return
-    fingerprint = source_hash(snapshot)
+    fingerprint = source_hash(snapshot, settings.get("rich_context", False))
     if not settings["key"]:
-        return apply_result(root, snapshot, fingerprint, {"status": "missing-key"}, is_enabled)
-    built = build_request(snapshot)
+        return apply_result(root, snapshot, fingerprint, {"status": "missing-key"}, is_enabled, settings.get("rich_context", False))
+    built = build_request(snapshot, settings.get("rich_context", False))
     if built is None:
-        return apply_result(root, snapshot, fingerprint, {"status": "not-needed"}, is_enabled)
+        return apply_result(root, snapshot, fingerprint, {"status": "not-needed"}, is_enabled, settings.get("rich_context", False))
     body, mapping = built
     day = day or utc_day()
     result, allowed = reserve(root, fingerprint, len(body), settings, day)
@@ -213,7 +221,7 @@ def process(root, snapshot, settings, request=evaluate, day=None, is_enabled=lam
         if not is_enabled():
             return  # Reservation stays charged; discard a revoked or rotated request.
         cache_result(root, fingerprint, result, day, settings.get("revision", 0))
-    return apply_result(root, snapshot, fingerprint, result, is_enabled)
+    return apply_result(root, snapshot, fingerprint, result, is_enabled, settings.get("rich_context", False))
 
 
 def preference(root, action="status"):
@@ -289,7 +297,7 @@ def run(root, stopped):
                 snapshot = canvas.read_json(path, {})
                 if not snapshot.get("enabled"):
                     continue
-                identity, fingerprint = snapshot["thread"], source_hash(snapshot)
+                identity, fingerprint = snapshot["thread"], source_hash(snapshot, settings.get("rich_context", False))
                 present.add(identity)
                 previous = observed.get(identity)
                 if not previous or previous[0] != fingerprint:

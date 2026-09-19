@@ -20,33 +20,16 @@ def metadata(state):
             'event_log': 'conversation.jsonl'}
 
 
-def display_state(state):
-    # Deterministic extraction keeps the main agent out of layout maintenance.
-    # Authored content wins. Otherwise promote the last visible response verbatim.
-    content = state.get('content', {})
-    latest = state.get('automatic', {}).get('latest_final') or {}
-    if not content.get('sections') and latest.get('text'):
-        state = dict(state)
-        content = dict(content)
-        paragraphs = [p.strip() for p in latest['text'].split('\n\n') if p.strip()]
-        content['sections'] = [{'id': 'conversation-response', 'title': 'From the conversation',
-            'blocks': [{'id': 'response', 'type': 'text', 'text': '\n\n'.join(paragraphs)[:20000]}]}]
-        state['content'] = content
-    return state
-
-
 def snapshot(root, state):
     import canvas
-    import html
-    import board
     directory = canvas.task_dir(root, state['thread'])
-    title = html.escape(state.get('content', {}).get('title') or 'Live Canvas')
-    scene = state.get('board', {'elements': [], 'files': {}})
-    payload = json.dumps({'type': 'excalidraw', 'version': 2, 'source': 'Live Canvas',
-                         'elements': scene['elements'], 'files': scene.get('files', {}),
-                         'appState': {'viewBackgroundColor': '#fbfaf8'}}, ensure_ascii=False)
-    canvas.atomic_bytes(directory / 'board.excalidraw', payload.encode())
-    document = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>' + title + '</title><style>body{margin:24px;font:14px system-ui;background:#fbfaf8;color:#343a40}h1{font-size:18px}svg{width:100%;height:auto;max-height:85vh}a{color:inherit}</style><h1>' + title + '</h1>' + board.svg(state) + '<p>Saved locally · <a href="board.excalidraw">Editable board</a> · <a href="chat.json">Conversation reference</a></p></html>'
+    # Reuse the real document renderer, but omit network polling and private history.
+    saved = {key: state.get(key) for key in ('thread', 'context_started_at', 'revision', 'curated_at', 'content', 'presentation')}
+    saved.update(enabled=True, feed=[], history=[], automatic={}, activity={}, transcript={})
+    payload = json.dumps(saved, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    template = (canvas.HERE / 'index.html').read_text()
+    prefix = template.split('// The fragment is never sent', 1)[0]
+    document = prefix + 'render(' + payload + "); $('connection-text').textContent = 'Saved locally';</script></body></html>"
     canvas.atomic_bytes(directory / 'canvas.html', document.encode())
     canvas.atomic_json(directory / 'chat.json', metadata(state))
 
