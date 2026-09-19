@@ -27,6 +27,12 @@ Codex setup backs up its global instructions and removes only unchanged Live Can
 
 Host integrations use one board per exact conversation identity and check for an existing view before opening. `stop` and `auto-open off` remain respected. Host-specific hooks/plugins may require restarting the app and reviewing its normal integration permissions. OpenCode 1.18.31 has been verified with a real local host: session creation opens a visible OS-browser board, visible replies sync at idle, subsequent turns reuse it, and child sessions are skipped. Its auto-discovery requires a `.js` plugin; rerunning setup migrates an unchanged Live Canvas-owned legacy `.mjs` installation safely.
 
+## Readable spatial layouts
+
+Fit measures the usable editor area, including desktop/mobile toolbars and padding. Automatic fitting keeps text at least 16 CSS pixels on screen. Larger boards have previous/next readable views; manual zoom and pan remain available. New text uses Excalidraw's hand-drawn Virgil font. Generated text wraps using measured font widths, and compact native cards use their actual text heights.
+
+Jev chooses focus, importance, grouping, and whether source material describes a connected sequence or independent ideas. It receives the available viewport and readability constraints. Pixel measurements and resize fitting run locally; they do not require model calls. Semantic decisions remain debounced, cached and subject to the existing configurable daily budget. Human-edited sections and manually authored objects stay fixed, so automatic packing may leave space around that protected work.
+
 ## Work together
 
 Use the editor tools directly on the board. Double-click text to edit; draw to annotate or highlight; drag objects to organize them. Drop images onto the board and other files to attach them. Text objects can hold comments beside the work they refer to. Links navigate in the current browser panel. **Fit** gives an overview; a narrow pane initially focuses a readable group rather than shrinking the entire board into illegible text.

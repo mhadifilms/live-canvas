@@ -77,63 +77,52 @@ def block_text(block):
     return '\n'.join(lines)
 
 
-def text_element(eid,text,x,y,heading=False):
+def text_element(eid,text,x,y,heading=False,width=320):
     import textwrap
-    size=24 if heading else 18
+    size=24 if heading else 20
     lines=[]
-    for line in text.split('\n'):lines.extend(textwrap.wrap(line,width=34 if heading else 48,replace_whitespace=False) or [''])
+    # Conservative server fallback. The editor measures with the loaded hand font.
+    for line in text.split('\n'):
+        lines.extend(textwrap.wrap(line,width=max(8,int(width/(size*.68))),replace_whitespace=False) or [''])
     wrapped='\n'.join(lines)
-    e=base_element(eid,'text',x,y,430,max(size*1.25,len(lines)*size*1.25))
-    e.update(text=wrapped,originalText=text,fontSize=size,fontFamily=2,textAlign='left',verticalAlign='top',containerId=None,autoResize=False,lineHeight=1.25)
+    e=base_element(eid,'text',x,y,width,max(size*1.3,len(lines)*size*1.3))
+    e.update(text=wrapped,originalText=text,fontSize=size,fontFamily=1,textAlign='left',verticalAlign='top',containerId=None,autoResize=False,lineHeight=1.3)
     return e
 
 
+def chunks(text, limit=300):
+    """Keep every source word; split dense prose into readable board-sized units."""
+    import textwrap
+    return [piece for paragraph in text.split('\n') if paragraph.strip()
+            for piece in textwrap.wrap(paragraph,limit,break_long_words=True,break_on_hyphens=False)]
+
+
 def sync_content(state):
-    content=state.get('content',{})
-    sections=content.get('sections') or []
-    latest=(state.get('automatic',{}).get('latest_final') or {}).get('text')
-    if not sections and latest:
-        sections=[{'id':'conversation-response','title':'From the conversation','blocks':[{'id':'reply','type':'text','text':latest}]}]
-    scene=state.setdefault('board',{'elements':[],'files':{},'versions':{},'revision':0})
-    signature=hashlib.sha256(json.dumps(sections,sort_keys=True).encode()).hexdigest()
-    if scene.get('source_hash')==signature:return
-    existing={e['id']:e for e in scene['elements']};wanted=set();changed=False
-    columns=[80,80]
-    for i,section in enumerate(sections):
-        column=i%2;x=column*560+80;y=columns[column]
-        body_height=0
-        for j,(name,value,heading) in enumerate([('heading',plain(section['title']),True),('body','\n\n'.join(block_text(b) for b in section['blocks']),False)]):
-            if not value.strip():continue
-            eid='agent-'+hashlib.sha256((section['id']+':'+name).encode()).hexdigest()[:22];wanted.add(eid)
-            e=text_element(eid,value,x,y+(50 if not heading else 0),heading)
-            body_height=max(body_height,e['height']+(50 if not heading else 0))
-            e['groupIds']=['section-'+section['id']]
-            e['customData']={'origin':'agent','sectionId':section['id'],'generatedText':value,'heading':heading}
-            old=existing.get(eid)
-            if old:
-                # Human edits, including deletions and positions, always win over automatic projection.
-                if old.get('customData',{}).get('humanTouched'):continue
-                if old.get('customData',{}).get('generatedText')==value:continue
-                e.update(x=old['x'],y=old['y'],version=old.get('version',1)+1,versionNonce=secrets.randbelow(2**30))
-            existing[eid]=e;scene['versions'][eid]=scene['versions'].get(eid,0)+1;changed=True
-        columns[column]=y+body_height+90
-    for eid,e in list(existing.items()):
-        if e.get('customData',{}).get('origin')=='agent' and eid not in wanted and not e.get('customData',{}).get('humanTouched') and not e.get('isDeleted'):
-            existing[eid]={**e,'isDeleted':True,'version':e.get('version',1)+1};scene['versions'][eid]=scene['versions'].get(eid,0)+1;changed=True
-    scene['source_hash']=signature
-    if changed:
-        scene['elements']=list(existing.values());scene['revision']+=1;scene['last_actor']='agent'
+    from board_layout import project
+    project(state)
 
 
 def update(root,thread,payload,actor='human'):
     import canvas
     incoming=payload.get('elements',[]);files=payload.get('files',{});bases=payload.get('base_versions',{})
     validate(incoming,files)
+    rendered=payload.get('rendered',[])
+    validate(rendered,{})
     if not isinstance(bases,dict):raise ValueError('Expected base element versions')
     def apply(state):
         scene=state.setdefault('board',{'elements':[],'files':{},'versions':{},'revision':0})
         current={e['id']:e for e in scene['elements']}
         changed=[]
+        incoming_ids={e['id'] for e in incoming}
+        for measured in rendered:
+            eid=measured['id'];old=current.get(eid)
+            if eid in incoming_ids or not old or not old.get('customData',{}).get('projection') or old.get('customData',{}).get('humanTouched'):continue
+            # Accept derived geometry and line breaks only, never different words or ownership.
+            if re.sub(r'\s','',measured.get('text','')) != re.sub(r'\s','',old.get('text','')):raise ValueError('Measured layout cannot change content')
+            geometry={k:measured[k] for k in ('x','y','width','height','text','points') if k in measured}
+            if all(old.get(k)==v for k,v in geometry.items()):continue
+            if bases.get(eid,0)!=scene['versions'].get(eid,0):raise Conflict('The board changed while its layout was measured')
+            current[eid]={**old,**geometry,'version':old.get('version',1)+1};changed.append(eid)
         for element in incoming:
             eid=element['id'];old=current.get(eid)
             # Ignore our own server-owned metadata when comparing a round trip.
@@ -198,43 +187,10 @@ def adaptive_enabled(state):
 
 
 def apply_presentation(state,presentation):
-    """Jev may arrange only generated objects that nobody has touched. Never move human work."""
+    """Semantic decisions guide native scene projection; human objects stay fixed."""
     if not adaptive_enabled(state) or presentation.get('status') not in {'focused','unchanged','uncertain'}:return
-    scene=state.get('board')
-    if not scene:return
-    style=presentation.get('style',{});viewport=state.get('collaboration',{}).get('viewport',{})
-    arrange=bool(style.get('layout') or style.get('density') or presentation.get('focus_id'))
-    if not arrange and not any(k in style for k in ('font','emphasis')):return
-    columns=2 if style.get('layout') in {'overview','compare'} and viewport.get('width',1000)>=850 else 1
-    groups={};occupied=[]
-    for e in scene['elements']:
-        if e.get('isDeleted'):continue
-        meta=e.get('customData',{})
-        if meta.get('origin')=='agent' and not meta.get('humanTouched'):
-            groups.setdefault(meta.get('sectionId'),[]).append(e)
-        else:occupied.append((e['x'],e['y'],e['width'],e['height']))
-    priorities=presentation.get('priorities',{});focus=presentation.get('focus_id')
-    order=sorted(groups,key=lambda k:(k!=focus,{'high':0,'normal':1,'low':2}.get(priorities.get(k),1)))
-    heights=[80]*columns;changed=False
-    color={'blue':'#426a82','sage':'#527565','neutral':'#343a40'}.get(style.get('emphasis'),'#343a40')
-    for i,section in enumerate(order):
-        objects=sorted(groups[section],key=lambda e:not e.get('customData',{}).get('heading'))
-        col=i%columns;x=80+col*560;y=heights[col];height=sum(e['height']+22 for e in objects)
-        # Keep generated content out of manually positioned work.
-        for _ in range(len(occupied)+1):
-            hits=[b for b in occupied if x<b[0]+b[2]+30 and x+460>b[0]-30 and y<b[1]+b[3]+30 and y+height>b[1]-30]
-            if not hits:break
-            y=max(b[1]+b[3] for b in hits)+60
-        for e in objects:
-            wanted={'x':x,'y':y} if arrange else {}
-            if 'emphasis' in style and e.get('customData',{}).get('heading'):wanted['strokeColor']=color
-            if 'font' in style:wanted['fontFamily']=3 if style['font']=='mono' and not e.get('customData',{}).get('heading') else 2
-            if any(e.get(k)!=v for k,v in wanted.items()):
-                e.update(wanted);e['version']=e.get('version',1)+1;e['versionNonce']=secrets.randbelow(2**30)
-                scene['versions'][e['id']]=scene['versions'].get(e['id'],0)+1;changed=True
-            y+=e['height']+(18 if style.get('density')=='compact' else 26)
-        heights[col]=y+80
-    if changed:scene['revision']+=1;scene['last_actor']='jev'
+    from board_layout import project
+    project(state,presentation)
 
 
 def feedback(state):

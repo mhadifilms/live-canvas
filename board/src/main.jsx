@@ -7,6 +7,7 @@ import {
   CaptureUpdateAction,
 } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
+import { safeViewport, prepareScene, readableViews, camera } from "./layout.mjs";
 import { changes, mergeAcknowledgement, safeLink } from "./sync.mjs";
 import "./style.css";
 import { startPolling, debounce } from "./polling.mjs";
@@ -17,6 +18,14 @@ const route =
 const auth = new URLSearchParams(location.hash.slice(1)).get("auth");
 history.replaceState(null, "", route);
 const viewId = crypto.randomUUID();
+const fontReady = new FontFace("Virgil", "url(/board-assets/fonts/Virgil/Virgil-Regular.woff2)").load().then(font => document.fonts.add(font)).catch(() => null);
+const measureContext = document.createElement("canvas").getContext("2d");
+function measuredScene(scene) {
+  return prepareScene(scene, (text, e) => {
+    measureContext.font = `${e.fontSize}px Virgil`;
+    return measureContext.measureText(text).width;
+  });
+}
 const empty = { elements: [], files: {}, versions: {}, revision: 0 };
 const apiRequest = async (path, body, signal) => {
   const r = await fetch(
@@ -44,6 +53,8 @@ const apiRequest = async (path, body, signal) => {
   return r.status === 204 ? {} : r.json();
 };
 function App() {
+  const editor = useRef(null);
+  const [page, setPage] = useState({index:0,total:0});
   const [api, setApi] = useState(null),
     [title, setTitle] = useState("Live Canvas"),
     [status, setStatus] = useState("Local board"),
@@ -68,6 +79,16 @@ function App() {
   const theme = matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
+  const fit = useCallback((index = 0) => {
+    if (!api || !editor.current) return;
+    const rect = safeViewport(editor.current);
+    const views = readableViews(api.getSceneElements(), rect);
+    if (!views.length) return;
+    const chosen = ((index % views.length) + views.length) % views.length;
+    api.updateScene({appState: camera(views[chosen], rect), captureUpdate: CaptureUpdateAction.NEVER});
+    setPage({index:chosen,total:views.length});
+    state.current.fitted = true;
+  }, [api]);
   const showError = useCallback((e) => {
     setError(e.message || "Could not save. Your work remains on this board.");
     setStatus("Unsaved");
@@ -109,9 +130,11 @@ function App() {
         const result = await apiRequest("/events", {
           kind: "board",
           elements: delta,
+          rendered: s.board.elements.filter(e => e.customData?.projection && !e.customData?.humanTouched),
           files: api.getFiles(),
           base_versions: s.board.versions,
         });
+        result.board = measuredScene(result.board);
         const local = api.getSceneElementsIncludingDeleted();
         const merged = mergeAcknowledgement(
           local,
@@ -171,7 +194,9 @@ function App() {
       try {
         const data = await apiRequest("/state", null, signal);
         if (cancelled) return;
-        const scene = data.board || empty;
+        await fontReady;
+        if (cancelled) return;
+        const scene = measuredScene(data.board || empty);
         setAdaptive(Boolean(data.adaptive?.enabled));
         setFollow(data.adaptive?.follow !== false);
         setTitle(data.content?.title || "Live Canvas");
@@ -195,28 +220,7 @@ function App() {
           });
           s.ready = true;
           s.dirty = local.length > 0;
-          if (scene.elements.length && !local.length) {
-            const visible = scene.elements.filter((e) => !e.isDeleted);
-            const first =
-              visible.find(
-                (e) => e.customData?.sectionId === data.presentation?.focus_id,
-              ) || visible[0];
-            const firstGroups = new Set(first?.groupIds || []);
-            const target =
-              innerWidth < 700
-                ? visible.filter(
-                    (e) =>
-                      e.groupIds?.some((g) => firstGroups.has(g)) ||
-                      e.id === first.id,
-                  )
-                : visible;
-            api.scrollToContent(target, {
-              fitToContent: true,
-              minZoom: 0.65,
-              maxZoom: 1,
-              animate: false,
-            });
-          }
+          if (scene.elements.length && !local.length) requestAnimationFrame(() => { if (!cancelled) fit(); });
           if (s.dirty) void save();
         } else if (
           (scene.revision !== s.board.revision || s.needsHydrate) &&
@@ -228,6 +232,7 @@ function App() {
           s.board = scene;
           s.needsHydrate = false;
           hydrate(scene);
+          if (s.fitted) requestAnimationFrame(() => { if (!cancelled) fit(); });
         }
         setConnected(true);
         if (!s.dirty) setStatus("Saved locally");
@@ -241,13 +246,17 @@ function App() {
     }
     const presence = setInterval(heartbeat, 15000);
     const viewport = debounce(
-      () =>
-        apiRequest("/events", {
+      () => {
+        if (!editor.current) return;
+        const rect = safeViewport(editor.current);
+        if (s.ready && s.fitted) fit();
+        return apiRequest("/events", {
           kind: "viewport",
           id: crypto.randomUUID(),
-          width: Math.max(120, innerWidth),
-          height: Math.max(120, innerHeight),
-        }).catch(() => {}),
+          width: Math.max(120, Math.round(rect.width)),
+          height: Math.max(120, Math.round(rect.height)),
+        }).catch(() => {});
+      },
       900,
     );
     (async () => {
@@ -271,7 +280,8 @@ function App() {
         if (!cancelled) showError(e);
       }
     })();
-    viewport();
+    const observer = new ResizeObserver(viewport);
+    observer.observe(editor.current);
     addEventListener("resize", viewport);
     const leave = (e) => {
       if (s.dirty) {
@@ -284,6 +294,7 @@ function App() {
       cancelled = true;
       s.alive = false;
       stopPolling();
+      observer.disconnect();
       viewport.cancel();
       clearInterval(presence);
       clearTimeout(s.timer);
@@ -291,7 +302,7 @@ function App() {
       removeEventListener("resize", viewport);
       removeEventListener("beforeunload", leave);
     };
-  }, [api, hydrate, save, showError]);
+  }, [api, hydrate, save, showError, fit]);
   function exportDraft() {
     const blob = new Blob(
       [
@@ -346,7 +357,7 @@ function App() {
             y: e.clientY / zoom - a.scrollY,
             text: "↗ " + file.name,
             fontSize: 18,
-            fontFamily: 2,
+            fontFamily: 1,
             link: location.origin + route + "/attachment/" + entry.file_id,
           },
         ]);
@@ -381,16 +392,16 @@ function App() {
         </div>
         <div className="board-actions">
           <button
-            onClick={() =>
-              api?.scrollToContent(
-                api.getSceneElements().filter((e) => !e.isDeleted),
-                { fitToContent: true, animate: true },
-              )
-            }
-            title="Fit all objects in view"
+            onClick={() => fit()}
+            title="Fit readable content inside the available board area"
           >
             Fit
           </button>
+          {page.total > 1 && <nav className="board-pages" aria-label="Readable board views">
+            <button onClick={() => fit(page.index - 1)} aria-label="Previous view">‹</button>
+            <span>{page.index + 1}/{page.total}</span>
+            <button onClick={() => fit(page.index + 1)} aria-label="Next view">›</button>
+          </nav>}
           <button
             aria-pressed={adaptive && follow}
             disabled={!adaptive}
@@ -412,7 +423,7 @@ function App() {
           </button>
         </div>
       </header>
-      <div className="editor">
+      <div className="editor" ref={editor} onWheel={() => {state.current.fitted = false;}}>
         <Excalidraw
           excalidrawAPI={setApi}
           initialData={{
@@ -420,8 +431,8 @@ function App() {
             appState: {
               theme,
               viewBackgroundColor: "#fbfaf8",
-              currentItemFontFamily: 2,
-              currentItemRoughness: 0,
+              currentItemFontFamily: 1,
+              currentItemRoughness: 1,
               currentItemStrokeColor: "#343a40",
             },
           }}
@@ -429,6 +440,7 @@ function App() {
           onChange={changed}
           onPointerDown={() => {
             state.current.pointer = true;
+            state.current.fitted = false;
           }}
           onPointerUp={() => {
             state.current.pointer = false;

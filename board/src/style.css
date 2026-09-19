@@ -227,3 +227,8 @@ button:disabled {
   opacity: 0.45;
   cursor: default;
 }
+.board-pages { display:flex; align-items:center; gap:1px; font-size:11px; color:#8a8985; }
+.board-pages button { font-size:18px; padding:3px 6px; }
+/* The shortcut hint is available in Help; keep drawing space free. */
+.excalidraw .HintViewer { display:none; }
+@media(max-width:540px) { .board-actions {gap:0} .identity strong {max-width:130px} }

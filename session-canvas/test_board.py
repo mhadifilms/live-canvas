@@ -106,3 +106,43 @@ class BundledEditorTests(unittest.TestCase):
             with self.subTest(asset=asset):self.assertTrue((canvas.HERE/asset.lstrip('/')).is_file())
         self.assertTrue((canvas.HERE/'board-assets/fonts').is_dir())
         self.assertTrue((canvas.HERE/'board-assets/licenses').is_dir())
+
+class LayoutRegressionTests(unittest.TestCase):
+    def state(self):
+        return {'content':{'sections':[{'id':'flow','title':'A process','blocks':[{'type':'timeline','items':[{'at':str(i),'label':label,'detail':''} for i,label in enumerate(['Collect evidence','Review the result','Publish the result'])]}]}]},'collaboration':{'viewport':{'width':800,'height':520}}}
+    def test_native_sequence_preserves_source_and_uses_hand_font(self):
+        s=self.state();board.sync_content(s);elements=s['board']['elements']
+        self.assertEqual(len([e for e in elements if e['type']=='arrow']),2)
+        self.assertTrue(all(e['fontFamily']==1 for e in elements if e['type']=='text'))
+        self.assertIn('Collect evidence',' '.join(e.get('originalText','') for e in elements))
+    def test_layout_is_compact_and_does_not_infer_again_from_its_own_geometry(self):
+        s=self.state();board.sync_content(s);before=jev.source_hash(s)
+        board.apply_presentation(s,{'status':'focused','focus_id':'flow','style':{'layout':'overview'}})
+        self.assertEqual(before,jev.source_hash(s))
+        cards=[e for e in s['board']['elements'] if e['type']=='rectangle']
+        self.assertEqual(cards[0]['y'],cards[1]['y'])
+        self.assertEqual(cards[1]['x']-(cards[0]['x']+cards[0]['width']),24)
+    def test_resize_reflows_but_preserves_human_edited_section(self):
+        s=self.state();board.sync_content(s)
+        e=next(e for e in s['board']['elements'] if e['type']=='text');e['customData']['humanTouched']=True
+        before=copy.deepcopy(s['board']['elements']);s['board']['human_revision']=1
+        s['collaboration']['viewport']={'width':320,'height':480};board.sync_content(s)
+        self.assertEqual(before,s['board']['elements'])
+    def test_jev_representation_questions_are_bounded_and_include_screen_constraints(self):
+        s=self.state();board.sync_content(s);body,mapping=jev.build_request(s,{'rich_context':True});request=json.loads(body)
+        self.assertIn('representation_section_0',request['questions'])
+        self.assertEqual(request['state']['display_constraints']['minimum_screen_text_px'],16)
+        self.assertLessEqual(len(body),jev.MAX_INPUT_BYTES)
+
+class MeasuredLayoutTests(unittest.TestCase):
+    setUp=BoardTests.setUp
+    content=BoardTests.content
+    def test_measured_geometry_persists_without_claiming_other_nodes(self):
+        s=self.content();es=s['board']['elements'];first=copy.deepcopy(es[1]);first['text']='Human correction'
+        rendered=copy.deepcopy(es);rendered[0]['height']-=10
+        result=board.update(self.root,self.thread,{'elements':[first],'rendered':rendered,'base_versions':s['board']['versions']})['board']
+        card=next(e for e in result['elements'] if e['id']==rendered[0]['id'])
+        self.assertEqual(card['height'],rendered[0]['height']);self.assertFalse(card['customData'].get('humanTouched'))
+    def test_measurement_cannot_replace_words(self):
+        s=self.content();es=copy.deepcopy(s['board']['elements']);es[1]['text']='Replacement content'
+        with self.assertRaises(ValueError):board.update(self.root,self.thread,{'elements':[],'rendered':es,'base_versions':s['board']['versions']})
